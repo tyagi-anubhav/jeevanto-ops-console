@@ -1,0 +1,2466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Content-Security-Policy (Phase 33.4 Stage 4). Delivered as a <meta> tag
+       because the static host (GitHub Pages) cannot set response headers. The
+       file is fully self-contained (inline <style>/<script>, no external assets),
+       so a tight policy holds. connect-src lists the live edge host plus local
+       Supabase so the same file works both hosted and in local dev. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https://qexfuwhyfeztwanihjye.supabase.co http://127.0.0.1:54321 http://localhost:54321; base-uri 'none'; form-action 'none'" />
+  <title>Jeevanto Ops — Issue Triage</title>
+  <style>
+    /* -----------------------------------------------------------------------
+       Reset & base
+    ----------------------------------------------------------------------- */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #0d0f14;
+      --surface:      #141720;
+      --surface-2:    #1c2030;
+      --border:       #252a38;
+      --text:         #e8eaf0;
+      --text-dim:     #7a80a0;
+      --accent:       #2d8cff;
+      --accent-glow:  rgba(45,140,255,0.18);
+      --amber:        #f5a623;
+      --amber-bg:     rgba(245,166,35,0.12);
+      --blue:         #2d8cff;
+      --blue-bg:      rgba(45,140,255,0.12);
+      --green:        #34d58c;
+      --green-bg:     rgba(52,213,140,0.12);
+      --grey:         #606880;
+      --grey-bg:      rgba(96,104,128,0.15);
+      --red:          #ff5c5c;
+      --radius:       8px;
+      --radius-sm:    4px;
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* -----------------------------------------------------------------------
+       Login screen
+    ----------------------------------------------------------------------- */
+    #login-screen {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .login-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 40px;
+      width: 360px;
+    }
+
+    .login-card h1 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .login-card p {
+      color: var(--text-dim);
+      font-size: 13px;
+      margin-bottom: 28px;
+    }
+
+    /* -----------------------------------------------------------------------
+       Main app
+    ----------------------------------------------------------------------- */
+    #app { display: none; min-height: 100vh; flex-direction: column; }
+
+    /* Header */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header h1 {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    header .badge-count {
+      background: var(--amber-bg);
+      color: var(--amber);
+      border: 1px solid rgba(245,166,35,0.3);
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 10px;
+    }
+
+    header .spacer { flex: 1; }
+
+    header .access-info {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    header .btn-logout {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      border-radius: var(--radius-sm);
+      padding: 4px 12px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    header .btn-logout:hover { border-color: var(--red); color: var(--red); }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      background: var(--surface);
+    }
+
+    .tab {
+      padding: 14px 20px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-dim);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* Content area */
+    .content {
+      flex: 1;
+      padding: 24px;
+      max-width: 960px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* -----------------------------------------------------------------------
+       Issue cards
+    ----------------------------------------------------------------------- */
+    .issue-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .issue-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color 0.15s;
+    }
+
+    .issue-card:hover { border-color: rgba(45,140,255,0.3); }
+
+    .issue-card-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 16px 20px;
+      cursor: pointer;
+    }
+
+    .issue-card-main { flex: 1; min-width: 0; }
+
+    .issue-title {
+      font-weight: 500;
+      margin-bottom: 4px;
+      word-break: break-word;
+    }
+
+    .issue-meta {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    /* Status badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .badge-open        { background: var(--amber-bg);  color: var(--amber);  border: 1px solid rgba(245,166,35,0.3); }
+    .badge-in_progress { background: var(--blue-bg);   color: var(--blue);   border: 1px solid rgba(45,140,255,0.3); }
+    .badge-resolved    { background: var(--green-bg);  color: var(--green);  border: 1px solid rgba(52,213,140,0.3); }
+    .badge-closed      { background: var(--grey-bg);   color: var(--grey);   border: 1px solid rgba(96,104,128,0.3); }
+
+    .badge-new        { background: var(--green-bg);  color: var(--green);  border: 1px solid rgba(52,213,140,0.3); }
+    .badge-sustained  { background: var(--amber-bg);  color: var(--amber);  border: 1px solid rgba(245,166,35,0.3); }
+
+    .badge-rc {
+      background: var(--surface-2);
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+
+    /* Expand icon */
+    .expand-icon {
+      color: var(--text-dim);
+      font-size: 16px;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .issue-card.expanded .expand-icon { transform: rotate(180deg); }
+
+    /* Expanded detail area */
+    .issue-detail {
+      display: none;
+      border-top: 1px solid var(--border);
+      padding: 20px;
+    }
+
+    .issue-card.expanded .issue-detail { display: block; }
+
+    /* Triage form */
+    .triage-form { display: flex; flex-direction: column; gap: 14px; }
+
+    .form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+
+    .form-group { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 160px; }
+
+    label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    /* Phase 33.4 (cosmetic fix): include type="password" so the login password
+       field renders with the SAME height/padding/line-height as the type="text"
+       email field above it (it previously fell back to shorter browser defaults). */
+    select, input[type="text"], input[type="password"], textarea {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 13px;
+      padding: 8px 10px;
+      width: 100%;
+      outline: none;
+      font-family: inherit;
+    }
+
+    select:focus, input[type="text"]:focus, input[type="password"]:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+
+    textarea { resize: vertical; min-height: 72px; }
+
+    .form-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    /* Buttons */
+    .btn {
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+
+    .btn-primary  { background: var(--accent); color: #fff; }
+    .btn-success  { background: var(--green);  color: #0d0f14; }
+    .btn-outline  {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+    }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Technical detail collapsible */
+    .tech-detail-toggle {
+      font-size: 12px;
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 8px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: none;
+      background: none;
+      color: var(--text-dim);
+    }
+
+    .tech-detail-toggle:hover { color: var(--accent); }
+
+    .tech-detail-body {
+      display: none;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 12px;
+      color: var(--text-dim);
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 320px;
+      overflow-y: auto;
+      margin-top: 4px;
+    }
+
+    .tech-detail-body.open { display: block; }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 16px 0;
+    }
+
+    /* -----------------------------------------------------------------------
+       Pattern review cards
+    ----------------------------------------------------------------------- */
+    .pattern-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+
+    .pattern-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .pattern-card-meta {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .pattern-summary {
+      color: var(--text-dim);
+      font-size: 13px;
+      margin-bottom: 16px;
+      line-height: 1.6;
+    }
+
+    .pattern-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .pattern-item {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+    }
+
+    .pattern-item-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .pattern-item-name { font-weight: 500; font-size: 13px; }
+
+    .pattern-item-desc { font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+
+    .pattern-item-ids {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 6px;
+      font-family: monospace;
+    }
+
+    /* -----------------------------------------------------------------------
+       Misc
+    ----------------------------------------------------------------------- */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-dim);
+    }
+
+    .empty-state .icon { font-size: 32px; margin-bottom: 12px; }
+
+    .alert {
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    .alert-error { background: rgba(255,92,92,0.1); border: 1px solid rgba(255,92,92,0.3); color: var(--red); }
+    .alert-success { background: var(--green-bg); border: 1px solid rgba(52,213,140,0.3); color: var(--green); }
+
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-state {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 40px 0;
+      color: var(--text-dim);
+    }
+
+    .trigger-bar {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 16px;
+    }
+
+    /* -----------------------------------------------------------------------
+       Form inputs (login)
+    ----------------------------------------------------------------------- */
+    .input-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+
+    .input-group label { font-size: 12px; font-weight: 500; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+
+    /* -----------------------------------------------------------------------
+       Phase 29A Stage 6C — banners, modal, case-file, config
+    ----------------------------------------------------------------------- */
+    #banner-stack { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+    .app-banner {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 16px; border-radius: var(--radius-sm); font-size: 13px;
+      border: 1px solid var(--border);
+    }
+    .app-banner-msg { flex: 1; }
+    .app-banner-x {
+      background: none; border: none; color: inherit; cursor: pointer;
+      font-size: 18px; line-height: 1; opacity: 0.7;
+    }
+    .app-banner-x:hover { opacity: 1; }
+    .app-banner-success { background: var(--green-bg); border-color: rgba(52,213,140,0.3); color: var(--green); }
+    .app-banner-error   { background: rgba(255,92,92,0.1); border-color: rgba(255,92,92,0.3); color: var(--red); }
+    .app-banner-info    { background: var(--blue-bg); border-color: rgba(45,140,255,0.3); color: var(--blue); }
+    .app-banner-fire {
+      background: rgba(255,92,92,0.16); border: 1px solid var(--red); color: var(--red);
+      font-weight: 600; letter-spacing: 0.01em;
+    }
+
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.6); align-items: center; justify-content: center;
+    }
+    .modal-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px; width: 420px; max-width: 92vw;
+    }
+
+    .cf-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; }
+    .cf-section { margin-bottom: 12px; }
+    .cf-h { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); margin-bottom: 4px; font-weight: 600; }
+    .cf-kv { font-size: 12px; color: var(--text); font-family: "SF Mono","Consolas",monospace; }
+    .cf-wrap { font-size: 12px; padding: 1px 0; }
+    .cf-inv  { font-size: 12px; padding: 1px 0; font-family: "SF Mono","Consolas",monospace; }
+
+    .config-row { display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+<!-- =========================================================================
+     Login screen
+========================================================================= -->
+<div id="login-screen">
+  <div class="login-card">
+    <h1>Jeevanto Ops</h1>
+    <p>Sign in with your email and password, or request a one-time token by email.</p>
+    <div id="login-alert"></div>
+    <div class="input-group">
+      <label for="email-input">Email</label>
+      <input type="text" id="email-input" placeholder="you@example.com" />
+    </div>
+    <div class="input-group">
+      <label for="password-input">Password</label>
+      <input type="password" id="password-input" placeholder="Your password" autocomplete="current-password" />
+    </div>
+    <button class="btn btn-primary" id="btn-password-login" style="width:100%">Sign in</button>
+    <div class="divider" style="margin:16px 0;"></div>
+    <button class="btn" id="btn-send-link" style="width:100%">Email me a one-time token instead</button>
+    <div id="token-section" style="display:none;margin-top:20px;">
+      <div class="divider"></div>
+      <div class="input-group" style="margin-top:12px;">
+        <label for="token-input">Paste the token from your email</label>
+        <input type="text" id="token-input" placeholder="Token from your email" />
+      </div>
+      <button class="btn btn-primary" id="btn-enter-token" style="width:100%;margin-top:4px">Enter Dashboard</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- =========================================================================
+     Main app
+========================================================================= -->
+<div id="app">
+  <header>
+    <h1>Jeevanto Ops — Issue Triage</h1>
+    <span class="badge-count" id="open-count">0 open</span>
+    <div class="spacer"></div>
+    <span class="access-info" id="access-info"></span>
+    <button class="btn-logout" id="btn-change-pw">Change password</button>
+    <button class="btn-logout" id="btn-logout">Log out</button>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="open">Open Issues</div>
+    <div class="tab" data-tab="resolved">Resolved</div>
+    <div class="tab" data-tab="patterns">Pattern Reviews</div>
+    <div class="tab" data-tab="breakglass">Break-Glass</div>
+    <div class="tab" data-tab="config" id="tab-config" style="display:none;">Config</div>
+    <div class="tab" data-tab="team" id="tab-team" style="display:none;">Team</div>
+    <div class="tab" data-tab="eng-notes" id="tab-eng-notes" style="display:none;">Engineering Notes</div>
+  </div>
+
+  <div class="content">
+    <div id="banner-stack"></div>
+    <div id="global-alert"></div>
+
+    <!-- Open Issues -->
+    <div class="tab-panel active" id="panel-open">
+      <div id="open-loading" class="loading-state"><div class="spinner"></div> Loading issues…</div>
+      <div id="open-list" class="issue-list"></div>
+    </div>
+
+    <!-- Resolved -->
+    <div class="tab-panel" id="panel-resolved">
+      <div id="resolved-loading" class="loading-state"><div class="spinner"></div> Loading…</div>
+      <div id="resolved-list" class="issue-list"></div>
+    </div>
+
+    <!-- Pattern Reviews -->
+    <div class="tab-panel" id="panel-patterns">
+      <div class="trigger-bar" id="trigger-pattern-bar" style="display:none;">
+        <button class="btn btn-outline" id="btn-trigger-pattern">Run Pattern Review</button>
+      </div>
+
+      <!-- Async pattern-review queue (Phase 29A Stage 6E). Steward-only: the
+           review runs off the HTTP request path via a 1-minute worker, so the
+           trigger enqueues and this list shows queued/running/succeeded/failed. -->
+      <div id="recent-reviews-section" style="display:none; margin-bottom:28px;">
+        <div class="trigger-bar" style="justify-content:space-between; align-items:center;">
+          <h3 style="margin:0; font-size:15px;">Recent pattern reviews</h3>
+          <button class="btn btn-outline" id="btn-refresh-recent">Refresh</button>
+        </div>
+        <p style="margin:4px 0 12px; color:#888; font-size:13px;">
+          Triggering enqueues a review; a worker runs it within ~1 minute. Click a row to expand.</p>
+        <div id="recent-reviews-list"></div>
+      </div>
+
+      <h3 style="font-size:15px; margin:0 0 8px;">Pattern review history</h3>
+      <div id="patterns-loading" class="loading-state"><div class="spinner"></div> Loading…</div>
+      <div id="patterns-list"></div>
+    </div>
+
+    <!-- =====================================================================
+         Break-Glass (Phase 29A Stage 3). Sub-tabs: Request / Approvals /
+         Active / Query / History. Every action runs through the SECURITY
+         DEFINER bridges in sentinel_audit; the UI is a thin client.
+    ===================================================================== -->
+    <div class="tab-panel" id="panel-breakglass">
+      <div class="tabs" style="margin-bottom:16px;">
+        <div class="tab bg-subtab active" data-subtab="request">Request</div>
+        <div class="tab bg-subtab" data-subtab="approvals">Approvals</div>
+        <div class="tab bg-subtab" data-subtab="active">Active</div>
+        <div class="tab bg-subtab" data-subtab="query">Query</div>
+        <div class="tab bg-subtab" data-subtab="history">History</div>
+      </div>
+
+      <!-- Request -->
+      <div class="bg-subpanel" id="bg-panel-request" style="display:block;">
+        <div id="bg-request-alert"></div>
+        <div class="input-group">
+          <label for="bg-stated-reason">Stated reason</label>
+          <textarea id="bg-stated-reason" rows="3"
+            style="background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:10px;font-family:inherit;font-size:13px;"></textarea>
+        </div>
+        <div class="input-group">
+          <label for="bg-reason-category">Reason category</label>
+          <select id="bg-reason-category"
+            style="background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:10px;font-size:13px;">
+            <option value="security_incident">Security incident</option>
+            <option value="lawful_access">Lawful access</option>
+            <option value="novel_issue_beyond_case_file">Novel issue beyond case file</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="input-group" id="bg-jurisdiction-group" style="display:none;">
+          <label for="bg-jurisdiction">Jurisdiction (required for lawful access)</label>
+          <select id="bg-jurisdiction"
+            style="background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:10px;font-size:13px;">
+            <option value="">— select —</option>
+            <option value="US">United States</option>
+            <option value="CA">Canada</option>
+            <option value="GB">United Kingdom</option>
+            <option value="IN">India</option>
+            <option value="AU">Australia</option>
+            <option value="NZ">New Zealand</option>
+            <option value="SG">Singapore</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label for="bg-target-account">Target account_id (optional, blank = system-wide)</label>
+          <input type="text" id="bg-target-account" placeholder="UUID or blank"
+            style="background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:10px;font-size:13px;" />
+        </div>
+        <div class="input-group">
+          <label for="bg-expires-at">Desired expiry (optional ISO timestamp)</label>
+          <input type="text" id="bg-expires-at" placeholder="2026-06-01T00:00:00Z or blank"
+            style="background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:10px;font-size:13px;" />
+        </div>
+        <button class="btn btn-primary" id="btn-bg-submit-request">Submit request</button>
+      </div>
+
+      <!-- Approvals -->
+      <div class="bg-subpanel" id="bg-panel-approvals" style="display:none;">
+        <div id="bg-approvals-alert"></div>
+        <div class="trigger-bar">
+          <button class="btn btn-outline" id="btn-bg-refresh-approvals">Refresh</button>
+        </div>
+        <div id="bg-approvals-loading" class="loading-state"><div class="spinner"></div> Loading…</div>
+        <div id="bg-approvals-list"></div>
+      </div>
+
+      <!-- Active -->
+      <div class="bg-subpanel" id="bg-panel-active" style="display:none;">
+        <div id="bg-active-alert"></div>
+        <div class="trigger-bar">
+          <button class="btn btn-outline" id="btn-bg-refresh-active">Refresh</button>
+        </div>
+        <div id="bg-active-loading" class="loading-state"><div class="spinner"></div> Loading…</div>
+        <div id="bg-active-list"></div>
+      </div>
+
+      <!-- Query -->
+      <div class="bg-subpanel" id="bg-panel-query" style="display:none;">
+        <div id="bg-query-alert"></div>
+        <p style="color:var(--text-dim);font-size:13px;margin-bottom:12px;">
+          Reads run under one of your active grants. Pick a grant, pick a function, fill in the target account, submit. Every call writes a row to <code>sentinel_audit.substrate_access_log</code>.
+        </p>
+        <div class="input-group">
+          <label for="bg-query-grant">Active grant</label>
+          <select id="bg-query-grant"
+            style="background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:10px;font-size:13px;"></select>
+        </div>
+        <div class="input-group">
+          <label for="bg-query-function">Read function</label>
+          <select id="bg-query-function"
+            style="background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:10px;font-size:13px;">
+            <option value="read_account_row">read_account_row</option>
+            <option value="read_memory_for_account">read_memory_for_account</option>
+            <option value="read_engine_invocation_log_for_account">read_engine_invocation_log_for_account</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label for="bg-query-target">Target account_id</label>
+          <input type="text" id="bg-query-target" placeholder="UUID"
+            style="background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:10px;font-size:13px;" />
+        </div>
+        <div class="input-group">
+          <label for="bg-query-limit">Limit (where applicable)</label>
+          <input type="number" id="bg-query-limit" value="100" min="1" max="1000"
+            style="background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:10px;font-size:13px;" />
+        </div>
+        <button class="btn btn-primary" id="btn-bg-run-query">Run read</button>
+        <div id="bg-query-result" style="margin-top:16px;"></div>
+      </div>
+
+      <!-- History -->
+      <div class="bg-subpanel" id="bg-panel-history" style="display:none;">
+        <div id="bg-history-alert"></div>
+        <div class="trigger-bar">
+          <button class="btn btn-outline" id="btn-bg-refresh-history">Refresh</button>
+        </div>
+        <div id="bg-history-loading" class="loading-state"><div class="spinner"></div> Loading…</div>
+        <div id="bg-history-list"></div>
+      </div>
+    </div>
+
+    <!-- =====================================================================
+         Config edit (Phase 29A Stage 6C). Steward-only; tab hidden otherwise.
+    ===================================================================== -->
+    <div class="tab-panel" id="panel-config">
+      <h2 style="font-size:16px;font-weight:600;margin-bottom:6px;">System configuration</h2>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px;">
+        Steward-only. Each value saves independently. The edge enforces steward
+        authority server-side; non-stewards never see this tab.
+      </p>
+      <div id="config-list"></div>
+    </div>
+
+    <!-- =====================================================================
+         Team (Phase 33.4). Steward-only staff management: ops members +
+         break-glass approvers. Tab hidden for every other tier. The edge +
+         RPCs enforce the steward gate server-side; this UI is convenience only.
+         NO scope controls — scoped access is deferred to post-V1.
+    ===================================================================== -->
+    <div class="tab-panel" id="panel-team">
+      <h2 style="font-size:16px;font-weight:600;margin-bottom:6px;">Team</h2>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:20px;">
+        Steward-only. Manage ops-dashboard members and break-glass approvers.
+        Invited members are inert until they sign in for the first time.
+        The edge enforces steward authority server-side.
+      </p>
+      <div id="team-alert"></div>
+
+      <!-- Members -->
+      <h3 style="font-size:14px;font-weight:600;margin:8px 0 8px;">Members</h3>
+      <div class="team-add-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+        <input id="member-email" type="email" placeholder="email@jeevanto.com"
+               style="flex:1 1 220px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px;">
+        <select id="member-tier"
+               style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px;">
+          <option value="responder">responder</option>
+          <option value="coordinator">coordinator</option>
+          <option value="steward">steward</option>
+          <option value="engineer">engineer</option>
+        </select>
+        <button id="member-invite-btn" class="btn"
+               style="padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:var(--accent,#2d6cdf);color:#fff;font-size:13px;cursor:pointer;">Invite</button>
+      </div>
+      <div id="members-list" style="margin-bottom:28px;"></div>
+
+      <!-- Approvers -->
+      <h3 style="font-size:14px;font-weight:600;margin:8px 0 8px;">Break-glass approvers</h3>
+      <p style="color:var(--text-dim);font-size:12px;margin-bottom:10px;">
+        An approver must already be an active member. Ticking "CEO seat" rotates
+        the seat: the current CEO is demoted to a plain approver. The active CEO
+        seat cannot be retired directly — rotate it first.
+      </p>
+      <div class="team-add-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+        <input id="approver-email" type="email" placeholder="member email"
+               style="flex:1 1 220px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);">
+          <input id="approver-ceo" type="checkbox"> CEO seat
+        </label>
+        <button id="approver-add-btn" class="btn"
+               style="padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:var(--accent,#2d6cdf);color:#fff;font-size:13px;cursor:pointer;">Add approver</button>
+      </div>
+      <div id="approvers-list"></div>
+    </div>
+
+    <!-- =====================================================================
+         Engineering Notes (Phase 29A Stage 7). Engineer-tier ONLY; tab hidden
+         for every other tier. SUBSTRATE-OF-RECORD: notes persist forever and
+         survive account deletion (the case-file breadcrumb is anonymised, the
+         note row is kept). PRIVACY (locked): technical content ONLY — never
+         personal data. The edge + RPC enforce the engineer gate server-side.
+    ===================================================================== -->
+    <div class="tab-panel" id="panel-eng-notes">
+      <h2 style="font-size:16px;font-weight:600;margin-bottom:6px;">Engineering notes</h2>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px;">
+        Engineer-tier working notes about the system.
+        <strong style="color:var(--text);">Technical content only — never personal data.</strong>
+        Notes are a substrate-of-record: they persist across account deletion (the
+        case-file reference is anonymised, the note itself is kept).
+      </p>
+
+      <div class="eng-note-form" style="margin-bottom:24px;">
+        <textarea id="eng-note-body" rows="4" placeholder="Technical note (no personal data)…"
+          style="width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;padding:10px;
+                 border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);resize:vertical;"></textarea>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap;">
+          <select id="eng-note-category"
+            style="padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px;">
+            <option value="general">general</option>
+            <option value="bug">bug</option>
+            <option value="investigation">investigation</option>
+            <option value="infra">infra</option>
+            <option value="followup">followup</option>
+          </select>
+          <input id="eng-note-casefile" type="text" placeholder="case-file trace_id (optional)"
+            style="flex:1;min-width:240px;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px;" />
+          <button class="btn btn-primary" id="btn-eng-note-save">Save note</button>
+        </div>
+      </div>
+
+      <div class="trigger-bar" style="justify-content:space-between;align-items:center;">
+        <h3 style="margin:0;font-size:15px;">Recent notes</h3>
+        <button class="btn btn-outline" id="btn-eng-notes-refresh">Refresh</button>
+      </div>
+      <div id="eng-notes-list" style="margin-top:12px;"></div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+// =============================================================================
+// Config — update DASHBOARD_API_URL to your deployed Edge Function base URL.
+// For local Supabase: http://127.0.0.1:54321/functions/v1
+// =============================================================================
+// Production edge (live Jeevanto project) vs local Supabase. These are public
+// hostnames, not secrets — the service_role key never leaves the edge env.
+const PROD_API_URL  = "https://qexfuwhyfeztwanihjye.supabase.co/functions/v1";
+const LOCAL_API_URL = "http://127.0.0.1:54321/functions/v1";
+const _host    = location.hostname;
+const _isLocal = _host === "" || _host === "localhost" || _host === "127.0.0.1" || _host === "[::1]";
+const DASHBOARD_API_URL = (
+  // ?api= override always wins (flexible testing); otherwise choose by host:
+  // hosted subdomain (ops.jeevanto.com) -> live edge; localhost/file:// -> local.
+  new URLSearchParams(location.search).get("api") ||
+  (_isLocal ? LOCAL_API_URL : PROD_API_URL)
+).replace(/\/$/, "");
+
+const API = `${DASHBOARD_API_URL}/ops-dashboard`;
+
+// =============================================================================
+// State
+// =============================================================================
+let authToken    = localStorage.getItem("ops_token") || null;
+let accessLevel  = localStorage.getItem("ops_access_level") || null;
+let userEmail    = localStorage.getItem("ops_email") || null;
+let allIssues    = [];
+
+// =============================================================================
+// Boot
+// =============================================================================
+(function boot() {
+  if (authToken) {
+    showApp();
+  }
+})();
+
+// =============================================================================
+// Auth
+// =============================================================================
+document.getElementById("btn-send-link").addEventListener("click", async () => {
+  const email = document.getElementById("email-input").value.trim();
+  if (!email) return showLoginAlert("Email is required.", "error");
+
+  setLoginLoading(true);
+  try {
+    const res  = await fetch(`${API}/auth`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const data = unwrap(await res.json());
+
+    if (!data.success) {
+      showLoginAlert(data.message || "Request failed.", "error");
+    } else {
+      // Phase 33.4 Stage A: the token is delivered OUT-OF-BAND (emailed to the
+      // registered address) — it is NEVER in this response. Reveal the paste
+      // field so the member can enter the token from their email. The message is
+      // uniform and never reveals whether the address is registered.
+      document.getElementById("token-section").style.display = "block";
+      localStorage.setItem("ops_pending_email", email);
+      showLoginAlert(data.message ||
+        "If this email is registered, a sign-in token has been emailed to you. Paste it below.", "success");
+    }
+  } catch (e) {
+    showLoginAlert("Network error: " + e.message, "error");
+  } finally {
+    setLoginLoading(false);
+  }
+});
+
+document.getElementById("btn-enter-token").addEventListener("click", async () => {
+  const token = document.getElementById("token-input").value.trim();
+  if (!token) return showLoginAlert("Paste your token first.", "error");
+
+  setLoginLoading(true);
+  try {
+    // Verify token by hitting a protected route
+    const res  = await fetch(`${API}/issues`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    const data = unwrap(await res.json());
+
+    if (!data.success) {
+      showLoginAlert("Invalid or expired token.", "error");
+      return;
+    }
+
+    // Store token and bootstrap the app
+    authToken   = token;
+    userEmail   = localStorage.getItem("ops_pending_email") || "";
+
+    localStorage.setItem("ops_token", token);
+    localStorage.setItem("ops_email", userEmail);
+
+    // Resolve the actor's real tier from the verified token (Phase 29A 6C).
+    await refreshWhoami();
+
+    showApp(data.issues || []);
+  } catch (e) {
+    showLoginAlert("Network error: " + e.message, "error");
+  } finally {
+    setLoginLoading(false);
+  }
+});
+
+// Phase 33.4 Stage B — email+password sign-in. On success the token is returned
+// in-band (the password proved identity) and we enter the same way as a pasted
+// token. Uniform failure otherwise (no enumeration).
+document.getElementById("btn-password-login").addEventListener("click", async () => {
+  const email = document.getElementById("email-input").value.trim();
+  const password = document.getElementById("password-input").value;
+  if (!email || !password) return showLoginAlert("Email and password are required.", "error");
+  setLoginLoading(true);
+  try {
+    const res  = await fetch(`${API}/login-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = unwrap(await res.json());
+    if (!data.success || !data.token) { showLoginAlert("Invalid email or password.", "error"); return; }
+    authToken = data.token;
+    userEmail = email;
+    localStorage.setItem("ops_token", data.token);
+    localStorage.setItem("ops_email", email);
+    await refreshWhoami();
+    const ir    = await apiFetch("GET", "/issues");
+    const idata = unwrap(await ir.json());
+    showApp(idata.issues || []);
+  } catch (e) {
+    showLoginAlert("Network error: " + e.message, "error");
+  } finally {
+    setLoginLoading(false);
+  }
+});
+
+// Phase 33.4 Stage B — self-serve change password (logged-in member).
+document.getElementById("btn-change-pw").addEventListener("click", async () => {
+  const pw = window.prompt("Enter a new password (at least 8 characters):");
+  if (pw == null) return;
+  if (pw.length < 8) { pushBanner("Password must be at least 8 characters.", "error"); return; }
+  try {
+    const res  = await apiFetch("POST", "/set-password", { new_password: pw });
+    const data = unwrap(await res.json());
+    if (!data.success) { pushBanner(data.message || "Could not set password.", "error"); return; }
+    pushBanner("Password updated.", "success");
+  } catch (e) { pushBanner("Could not set password: " + e.message, "error"); }
+});
+
+document.getElementById("btn-logout").addEventListener("click", () => {
+  localStorage.removeItem("ops_token");
+  localStorage.removeItem("ops_email");
+  localStorage.removeItem("ops_access_level");
+  authToken = null;
+  location.reload();
+});
+
+// =============================================================================
+// Tab switching — main tabs only (filter on data-tab; break-glass sub-tabs
+// use data-subtab and have their own handler below).
+// =============================================================================
+document.querySelectorAll(".tab[data-tab]").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab[data-tab]").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById("panel-" + tab.dataset.tab).classList.add("active");
+
+    // Auto-load break-glass content on tab activation
+    if (tab.dataset.tab === "breakglass") {
+      // Default sub-tab is "request" (already visible). Nothing to load eagerly.
+    }
+    if (tab.dataset.tab === "config") loadConfig();
+    if (tab.dataset.tab === "team") loadTeam();
+    if (tab.dataset.tab === "eng-notes") loadEngNotes();
+  });
+});
+
+// =============================================================================
+// Show app
+// =============================================================================
+async function showApp(preloadedIssues) {
+  document.getElementById("login-screen").style.display = "none";
+  document.getElementById("app").style.display = "flex";
+
+  // Ensure we know the actor's tier (boot path may have a token but no tier yet).
+  if (!accessLevel) {
+    await refreshWhoami();
+  } else {
+    applyTierVisibility();
+    document.getElementById("access-info").textContent =
+      userEmail ? `${userEmail} · ${accessLevel}` : "";
+  }
+
+  await loadIssues(preloadedIssues);
+  loadPatterns();
+}
+
+// =============================================================================
+// Issues
+// =============================================================================
+async function loadIssues(preloaded) {
+  let issues = preloaded;
+
+  if (!issues) {
+    try {
+      const res  = await apiFetch("GET", "/issues");
+      const data = unwrap(await res.json());
+      if (!data.success) { showGlobalAlert(data.message, "error"); return; }
+      issues = data.issues || [];
+    } catch (e) {
+      showGlobalAlert("Failed to load issues: " + e.message, "error");
+      return;
+    }
+  }
+
+  allIssues = issues;
+  detectFireMode(issues);
+
+  const openIssues     = issues.filter(i => i.status === "open" || i.status === "in_progress");
+  const resolvedIssues = issues.filter(i => i.status === "resolved" || i.status === "closed");
+
+  document.getElementById("open-count").textContent = `${openIssues.length} open`;
+
+  renderIssueList("open-list",     "open-loading",     openIssues);
+  renderIssueList("resolved-list", "resolved-loading", resolvedIssues);
+}
+
+function renderIssueList(listId, loadingId, issues) {
+  const loadingEl = document.getElementById(loadingId);
+  const listEl    = document.getElementById(listId);
+
+  if (loadingEl) loadingEl.style.display = "none";
+
+  if (issues.length === 0) {
+    listEl.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">✓</div>
+        <p>No issues here.</p>
+      </div>`;
+    return;
+  }
+
+  listEl.innerHTML = "";
+  issues.forEach(issue => listEl.appendChild(buildIssueCard(issue)));
+}
+
+function buildIssueCard(issue) {
+  const card     = document.createElement("div");
+  card.className = "issue-card";
+  card.dataset.id = issue.issue_id;
+
+  const summary = (issue.plain_english_summary || "(no description)").slice(0, 120);
+  const date    = issue.submitted_at ? formatDate(issue.submitted_at) : "Unknown date";
+  const status  = issue.status || "open";
+  const rc      = issue.root_cause_category;
+  const commit  = issue.resolution_commit;
+
+  card.innerHTML = `
+    <div class="issue-card-header">
+      <div class="issue-card-main">
+        <div class="issue-title">${escHtml(summary)}</div>
+        <div class="issue-meta">
+          <span>${date}</span>
+          <span class="badge badge-${status}">${status.replace("_", " ")}</span>
+          ${rc ? `<span class="badge-rc">${rc.replace("_", " ")}</span>` : ""}
+          ${commit ? `<span class="badge-rc">commit: ${escHtml(commit.slice(0,8))}</span>` : ""}
+        </div>
+      </div>
+      <span class="expand-icon">▾</span>
+    </div>
+    <div class="issue-detail" id="detail-${issue.issue_id}">
+      <div class="loading-state"><div class="spinner"></div> Loading detail…</div>
+    </div>`;
+
+  card.querySelector(".issue-card-header").addEventListener("click", () => toggleCard(card, issue));
+  return card;
+}
+
+async function toggleCard(card, issue) {
+  const wasExpanded = card.classList.contains("expanded");
+  card.classList.toggle("expanded");
+
+  if (wasExpanded) return;
+
+  const detailEl = card.querySelector(".issue-detail");
+  try {
+    const res  = await apiFetch("GET", `/issues/${issue.issue_id}`);
+    const data = unwrap(await res.json());
+    if (!data.success) { detailEl.innerHTML = `<p class="alert alert-error">${escHtml(data.message)}</p>`; return; }
+    renderIssueDetail(detailEl, data.issue, issue.issue_id);
+  } catch (e) {
+    detailEl.innerHTML = `<div class="alert alert-error">Failed to load detail: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderIssueDetail(container, issue, issueId) {
+  const triage    = issue.triage || {};
+  const canTriage      = canActorDo("canTriage");
+  const canCloseIssue  = canActorDo("canClose");
+  const canReopenIssue = canActorDo("canReopen");
+  const canViewCF      = canActorDo("canViewCaseFile");
+  const isResolved = triage.status === "resolved" || triage.status === "closed";
+
+  const techJson = triage.technical_detail
+    ? JSON.stringify(triage.technical_detail, null, 2)
+    : issue.attached_logs
+      ? JSON.stringify(issue.attached_logs, null, 2)
+      : null;
+
+  container.innerHTML = `
+    <div class="triage-form">
+
+      <!-- Lifecycle controls (Phase 29A 6C) — tier + state gated; edge re-enforces -->
+      ${(canCloseIssue && !isResolved) || (canReopenIssue && isResolved) ? `<div class="form-actions" style="margin-bottom:4px;">
+        ${canCloseIssue && !isResolved ? `<button class="btn btn-outline" onclick="showCloseModal('${issueId}')">Close issue</button>` : ""}
+        ${canReopenIssue && isResolved ? `<button class="btn btn-outline" onclick="showReopenModal('${issueId}')">Reopen issue</button>` : ""}
+      </div>` : ""}
+
+      <!-- Full description -->
+      <div class="form-group">
+        <label>User Report</label>
+        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;font-size:13px;color:var(--text);line-height:1.6;white-space:pre-wrap;">${escHtml(issue.user_note || "(empty)")}</div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Triage controls -->
+      <div class="form-row">
+        <div class="form-group">
+          <label>Decision</label>
+          <select id="sel-decision-${issueId}" ${!canTriage ? "disabled" : ""}>
+            <option value="">— select —</option>
+            <option value="fix_now"       ${triage.decision==="fix_now"       ?"selected":""}>Fix Now</option>
+            <option value="fix_later"     ${triage.decision==="fix_later"     ?"selected":""}>Fix Later</option>
+            <option value="wont_fix"      ${triage.decision==="wont_fix"      ?"selected":""}>Won't Fix</option>
+            <option value="need_more_info"${triage.decision==="need_more_info"?"selected":""}>Need More Info</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Root Cause</label>
+          <select id="sel-rc-${issueId}" ${!canTriage ? "disabled" : ""}>
+            <option value="">— select —</option>
+            <option value="ui_bug"         ${triage.root_cause_category==="ui_bug"         ?"selected":""}>UI Bug</option>
+            <option value="backend_error"  ${triage.root_cause_category==="backend_error"  ?"selected":""}>Backend Error</option>
+            <option value="performance"    ${triage.root_cause_category==="performance"    ?"selected":""}>Performance</option>
+            <option value="user_confusion" ${triage.root_cause_category==="user_confusion" ?"selected":""}>User Confusion</option>
+            <option value="data_issue"     ${triage.root_cause_category==="data_issue"     ?"selected":""}>Data Issue</option>
+            <option value="other"          ${triage.root_cause_category==="other"          ?"selected":""}>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="sel-status-${issueId}" ${!canTriage ? "disabled" : ""}>
+            <option value="open"        ${(triage.status||"open")==="open"        ?"selected":""}>Open</option>
+            <option value="in_progress" ${triage.status==="in_progress"           ?"selected":""}>In Progress</option>
+            <option value="resolved"    ${triage.status==="resolved"              ?"selected":""}>Resolved</option>
+            <option value="closed"      ${triage.status==="closed"                ?"selected":""}>Closed</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Decision Notes</label>
+        <textarea id="ta-notes-${issueId}" placeholder="Plain English notes…" ${!canTriage ? "disabled" : ""}>${escHtml(triage.decision_notes || "")}</textarea>
+      </div>
+
+      ${canTriage ? `
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="saveDecision('${issueId}')">Save Decision</button>
+        ${!isResolved ? `<button class="btn btn-success" onclick="showResolvePrompt('${issueId}')">Mark Resolved</button>` : ""}
+      </div>` : `<p style="font-size:12px;color:var(--text-dim)">Read-only access for your tier — cannot make triage decisions.</p>`}
+
+      <!-- Resolution info (if resolved) -->
+      ${triage.resolution_commit ? `
+      <div class="divider"></div>
+      <div class="form-group">
+        <label>Resolution</label>
+        <div style="font-size:13px;">
+          <span class="badge-rc">commit: ${escHtml(triage.resolution_commit)}</span>
+          ${triage.resolution_notes ? `<p style="margin-top:8px;color:var(--text-dim);">${escHtml(triage.resolution_notes)}</p>` : ""}
+        </div>
+      </div>` : ""}
+
+      <!-- Resolve prompt (hidden by default) -->
+      ${canTriage && !isResolved ? `
+      <div id="resolve-prompt-${issueId}" style="display:none;">
+        <div class="divider"></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Commit Hash</label>
+            <input type="text" id="inp-commit-${issueId}" placeholder="abc1234" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>What was done</label>
+          <textarea id="ta-resnotes-${issueId}" placeholder="Plain English resolution notes…"></textarea>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-success" onclick="confirmResolve('${issueId}')">Confirm Resolution</button>
+          <button class="btn btn-outline" onclick="hideResolvePrompt('${issueId}')">Cancel</button>
+        </div>
+      </div>` : ""}
+
+      <!-- Case File (Phase 29A 6C) — responder+; engineer excluded -->
+      ${canViewCF ? `
+      <div class="divider"></div>
+      <div class="form-group">
+        <label>Case File</label>
+        <button class="btn btn-outline" id="cf-btn-${issueId}" onclick="loadCaseFile('${issueId}', this)">Load case file</button>
+        <div id="casefile-body-${issueId}" style="margin-top:10px;"></div>
+      </div>` : ""}
+
+      <!-- Technical Detail -->
+      ${techJson ? `
+      <div class="divider"></div>
+      <button class="tech-detail-toggle" onclick="toggleTechDetail('${issueId}')">
+        ▸ Technical Detail (for coders)
+      </button>
+      <div class="tech-detail-body" id="tech-${issueId}">${escHtml(techJson)}</div>` : ""}
+
+    </div>`;
+}
+
+async function saveDecision(issueId) {
+  const decision = document.getElementById(`sel-decision-${issueId}`).value;
+  if (!decision) { alert("Please select a decision."); return; }
+
+  const payload = {
+    decision,
+    decision_notes:      document.getElementById(`ta-notes-${issueId}`).value || null,
+    root_cause_category: document.getElementById(`sel-rc-${issueId}`).value    || null,
+    status:              document.getElementById(`sel-status-${issueId}`).value || "open",
+  };
+
+  try {
+    const res  = await apiFetch("PATCH", `/issues/${issueId}/triage`, payload);
+    const data = unwrap(await res.json());
+    if (!data.success) { showGlobalAlert(data.message, "error"); return; }
+    showGlobalAlert("Decision saved.", "success");
+    await refreshIssues();
+  } catch (e) {
+    showGlobalAlert("Save failed: " + e.message, "error");
+  }
+}
+
+function showResolvePrompt(issueId) {
+  document.getElementById(`resolve-prompt-${issueId}`).style.display = "block";
+}
+
+function hideResolvePrompt(issueId) {
+  document.getElementById(`resolve-prompt-${issueId}`).style.display = "none";
+}
+
+async function confirmResolve(issueId) {
+  const commit = document.getElementById(`inp-commit-${issueId}`).value.trim();
+  const notes  = document.getElementById(`ta-resnotes-${issueId}`).value.trim();
+
+  try {
+    const res  = await apiFetch("POST", `/issues/${issueId}/resolve`, {
+      resolution_commit: commit || null,
+      resolution_notes:  notes  || null,
+    });
+    const data = unwrap(await res.json());
+    if (!data.success) { showGlobalAlert(data.message, "error"); return; }
+
+    let msg = "Issue resolved.";
+    if (data.pattern_review?.success) msg += " Pattern review triggered automatically.";
+    showGlobalAlert(msg, "success");
+
+    await refreshIssues();
+    await loadPatterns();
+  } catch (e) {
+    showGlobalAlert("Resolve failed: " + e.message, "error");
+  }
+}
+
+function toggleTechDetail(issueId) {
+  const body   = document.getElementById(`tech-${issueId}`);
+  const toggle = body.previousElementSibling;
+  body.classList.toggle("open");
+  toggle.textContent = body.classList.contains("open")
+    ? "▾ Technical Detail (for coders)"
+    : "▸ Technical Detail (for coders)";
+}
+
+async function refreshIssues() {
+  document.getElementById("open-loading").style.display    = "flex";
+  document.getElementById("resolved-loading").style.display = "flex";
+  document.getElementById("open-list").innerHTML            = "";
+  document.getElementById("resolved-list").innerHTML        = "";
+  await loadIssues(null);
+}
+
+// =============================================================================
+// Patterns
+// =============================================================================
+async function loadPatterns() {
+  const loadingEl = document.getElementById("patterns-loading");
+  const listEl    = document.getElementById("patterns-list");
+
+  if (loadingEl) loadingEl.style.display = "flex";
+
+  try {
+    const res  = await apiFetch("GET", "/patterns");
+    const data = unwrap(await res.json());
+    if (loadingEl) loadingEl.style.display = "none";
+    if (!data.success) { listEl.innerHTML = `<div class="alert alert-error">${escHtml(data.message)}</div>`; return; }
+    renderPatterns(listEl, data.patterns || []);
+  } catch (e) {
+    if (loadingEl) loadingEl.style.display = "none";
+    listEl.innerHTML = `<div class="alert alert-error">Failed to load patterns: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderPatterns(container, patterns) {
+  if (patterns.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">◌</div>
+        <p>No pattern reviews yet. They are triggered automatically every 25 resolved issues, or run one manually.</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = "";
+  patterns.forEach(review => {
+    const card     = document.createElement("div");
+    card.className = "pattern-card";
+
+    const patternItems = Array.isArray(review.patterns_found) ? review.patterns_found : [];
+
+    card.innerHTML = `
+      <div class="pattern-card-header">
+        <div>
+          <strong>${formatDate(review.triggered_at)}</strong>
+          <span class="badge-rc" style="margin-left:8px;">${review.trigger_type}</span>
+          <span class="badge-rc" style="margin-left:4px;">${review.issue_count_at_trigger ?? "?"} issues at trigger</span>
+        </div>
+      </div>
+      ${review.plain_english_summary ? `<p class="pattern-summary">${escHtml(review.plain_english_summary)}</p>` : ""}
+      <div class="pattern-list">
+        ${patternItems.map(p => `
+          <div class="pattern-item">
+            <div class="pattern-item-header">
+              <span class="pattern-item-name">${escHtml(p.name || "Unnamed pattern")}</span>
+              <span class="badge badge-${p.category || "new"}">${p.category || "new"}</span>
+            </div>
+            <div class="pattern-item-desc">${escHtml(p.description || "")}</div>
+            ${p.affected_issue_ids?.length ? `<div class="pattern-item-ids">Issues: ${p.affected_issue_ids.join(", ")}</div>` : ""}
+          </div>`).join("")}
+      </div>`;
+
+    container.appendChild(card);
+  });
+}
+
+// Phase 29A Stage 6E: triggering ENQUEUES an async review and returns
+// immediately (the review runs off the HTTP request path via a 1-minute
+// worker). No spinner — show a "queued" banner and refresh the recent list.
+document.getElementById("btn-trigger-pattern").addEventListener("click", async () => {
+  if (!canActorDo("canEditConfig")) {
+    showGlobalAlert("Only stewards can trigger pattern reviews.", "error");
+    return;
+  }
+  try {
+    const res  = await apiFetch("POST", "/patterns/trigger", {});
+    const data = unwrap(await res.json());
+    if (!data.success) {
+      showGlobalAlert(data.message || "Could not queue pattern review.", "error");
+    } else {
+      const already = data.state && data.state !== "queued";
+      showGlobalAlert(
+        already
+          ? "A pattern review is already in progress — showing the existing request."
+          : "Pattern review queued. Results will appear below within ~1 minute.",
+        "success");
+      await loadRecentPatterns();
+    }
+  } catch (e) {
+    showGlobalAlert("Failed: " + e.message, "error");
+  }
+});
+
+const _btnRefreshRecent = document.getElementById("btn-refresh-recent");
+if (_btnRefreshRecent) _btnRefreshRecent.addEventListener("click", () => loadRecentPatterns());
+
+// =============================================================================
+// Recent pattern reviews (async queue — Phase 29A Stage 6E, steward-only)
+// =============================================================================
+async function loadRecentPatterns() {
+  if (!canActorDo("canEditConfig")) return;     // steward-only surface
+  const listEl = document.getElementById("recent-reviews-list");
+  if (!listEl) return;
+  listEl.innerHTML = `<div class="loading-state"><div class="spinner"></div> Loading…</div>`;
+  try {
+    const res  = await apiFetch("GET", "/patterns/recent");
+    const data = unwrap(await res.json());
+    if (!data.success) { listEl.innerHTML = `<div class="alert alert-error">${escHtml(data.message)}</div>`; return; }
+    renderRecentPatterns(listEl, data.reviews || []);
+  } catch (e) {
+    listEl.innerHTML = `<div class="alert alert-error">Failed to load recent reviews: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderRecentPatterns(container, reviews) {
+  if (!reviews.length) {
+    container.innerHTML = `
+      <div class="empty-state"><div class="icon">◌</div>
+        <p>No async pattern reviews yet. Click “Run Pattern Review” above to queue one.</p></div>`;
+    return;
+  }
+  const badge = (state) => {
+    const map = { queued: "#888", running: "#2563eb", succeeded: "#16a34a", failed: "#dc2626" };
+    return `<span class="badge" style="background:${map[state] || "#888"};color:#fff;">${escHtml(state)}</span>`;
+  };
+  container.innerHTML = "";
+  reviews.forEach(rev => {
+    const card = document.createElement("div");
+    card.className = "pattern-card";
+    const result   = rev.result && typeof rev.result === "object" ? rev.result : null;
+    const patterns = result && Array.isArray(result.patterns) ? result.patterns : [];
+    const expandable = rev.state === "succeeded" || rev.state === "failed";
+
+    const head = `
+      <div class="pattern-card-header" style="cursor:${expandable ? "pointer" : "default"};">
+        <div>
+          ${badge(rev.state)}
+          <strong style="margin-left:8px;">${formatDate(rev.requested_at)}</strong>
+          ${rev.issue_count != null ? `<span class="badge-rc" style="margin-left:6px;">${rev.issue_count} issues</span>` : ""}
+        </div>
+        ${expandable ? `<span class="expand-caret">▾</span>` : ""}
+      </div>`;
+
+    let detail = "";
+    if (rev.state === "failed") {
+      detail = `<div class="alert alert-error" style="margin-top:8px;">${escHtml(rev.error_message || "Review failed.")}</div>`;
+    } else if (rev.state === "succeeded" && result) {
+      detail = `
+        ${result.summary ? `<p class="pattern-summary">${escHtml(result.summary)}</p>` : ""}
+        <div class="pattern-list">
+          ${patterns.map(p => `
+            <div class="pattern-item">
+              <div class="pattern-item-header">
+                <span class="pattern-item-name">${escHtml(p.name || "Unnamed pattern")}</span>
+                <span class="badge badge-${p.category || "new"}">${escHtml(p.category || "new")}</span>
+              </div>
+              <div class="pattern-item-desc">${escHtml(p.description || "")}</div>
+              ${Array.isArray(p.affected_issue_ids) && p.affected_issue_ids.length ? `<div class="pattern-item-ids">Issues: ${escHtml(p.affected_issue_ids.join(", "))}</div>` : ""}
+            </div>`).join("")}
+        </div>`;
+    }
+
+    const detailWrap = document.createElement("div");
+    detailWrap.style.display = "none";
+    detailWrap.innerHTML = detail;
+    card.innerHTML = head;
+    if (expandable) {
+      card.appendChild(detailWrap);
+      card.querySelector(".pattern-card-header").addEventListener("click", () => {
+        const open = detailWrap.style.display !== "none";
+        detailWrap.style.display = open ? "none" : "block";
+        const caret = card.querySelector(".expand-caret");
+        if (caret) caret.textContent = open ? "▾" : "▴";
+      });
+    }
+    container.appendChild(card);
+  });
+}
+
+// =============================================================================
+// Engineering notes (Phase 29A Stage 7 — engineer tier only)
+// Substrate-of-record technical notes. The edge + RPC enforce the engineer
+// gate server-side; the UI fails closed (canEngNotes is engineer-only).
+// =============================================================================
+async function loadEngNotes() {
+  if (!canActorDo("canEngNotes")) return;          // engineer-only surface
+  const listEl = document.getElementById("eng-notes-list");
+  if (!listEl) return;
+  listEl.innerHTML = `<div class="loading-state"><div class="spinner"></div> Loading…</div>`;
+  try {
+    const res  = await apiFetch("GET", "/eng-notes");
+    const data = unwrap(await res.json());
+    if (!data.success) { listEl.innerHTML = `<div class="alert alert-error">${escHtml(data.message)}</div>`; return; }
+    renderEngNotes(listEl, data.notes || []);
+  } catch (e) {
+    listEl.innerHTML = `<div class="alert alert-error">Failed to load notes: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderEngNotes(container, notes) {
+  if (!notes.length) {
+    container.innerHTML = `
+      <div class="empty-state"><div class="icon">◌</div>
+        <p>No engineering notes yet. Write one above.</p></div>`;
+    return;
+  }
+  container.innerHTML = "";
+  notes.forEach(n => {
+    const card = document.createElement("div");
+    card.className = "pattern-card";
+    const crumb = n.case_file_id_at_creation
+      ? `<span class="badge-rc" style="margin-left:6px;">case-file ${escHtml(n.case_file_id_at_creation)}</span>`
+      : `<span class="badge-rc" style="margin-left:6px;opacity:0.6;">no case-file ref</span>`;
+    card.innerHTML = `
+      <div class="pattern-card-header" style="cursor:default;">
+        <div>
+          <span class="badge badge-${escHtml(n.category || "general")}">${escHtml(n.category || "general")}</span>
+          <span class="badge" style="margin-left:6px;background:#444;color:#fff;">${escHtml(n.status || "open")}</span>
+          <strong style="margin-left:8px;">${formatDate(n.created_at)}</strong>
+          ${crumb}
+        </div>
+      </div>
+      <p style="white-space:pre-wrap;margin:8px 0 0;font-size:14px;line-height:1.5;">${escHtml(n.note_body || "")}</p>`;
+    container.appendChild(card);
+  });
+}
+
+async function submitEngNote() {
+  const bodyEl = document.getElementById("eng-note-body");
+  const catEl  = document.getElementById("eng-note-category");
+  const cfEl   = document.getElementById("eng-note-casefile");
+  const btn    = document.getElementById("btn-eng-note-save");
+  const noteBody = (bodyEl?.value || "").trim();
+  if (!noteBody) { pushBanner("A note needs technical content.", "error"); return; }
+
+  const payload = { note_body: noteBody, category: catEl?.value || "general" };
+  const cf = (cfEl?.value || "").trim();
+  if (cf) payload.case_file_id = cf;
+
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+  try {
+    const res  = await apiFetch("POST", "/eng-notes", payload);
+    const data = unwrap(await res.json());
+    if (!data.success) { pushBanner(data.message || "Could not save note.", "error"); return; }
+    if (bodyEl) bodyEl.value = "";
+    if (cfEl)   cfEl.value   = "";
+    pushBanner("Engineering note recorded.", "success");
+    await loadEngNotes();
+  } catch (e) {
+    pushBanner("Could not save note: " + e.message, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Save note"; }
+  }
+}
+
+const _btnEngSave = document.getElementById("btn-eng-note-save");
+if (_btnEngSave) _btnEngSave.addEventListener("click", submitEngNote);
+const _btnEngRefresh = document.getElementById("btn-eng-notes-refresh");
+if (_btnEngRefresh) _btnEngRefresh.addEventListener("click", () => loadEngNotes());
+
+// =============================================================================
+// Utilities
+// =============================================================================
+function apiFetch(method, path, body) {
+  const opts = {
+    method,
+    headers: {
+      "Authorization": `Bearer ${authToken}`,
+      "Content-Type":  "application/json",
+    },
+  };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  return fetch(`${API}${path}`, opts);
+}
+
+// Reshape the canonical {success, data, error} envelope into the flat
+// legacy dashboard shape so downstream code can continue to read
+// data.issues / data.token / data.patterns / data.message directly.
+// See docs/glossary/edge_function_envelope.md for the envelope contract.
+function unwrap(body) {
+  if (!body || typeof body !== "object") {
+    return { success: false, message: "Malformed response body" };
+  }
+  if (body.success === true) {
+    const inner = (body.data && typeof body.data === "object") ? body.data : {};
+    return { success: true, ...inner };
+  }
+  const err = body.error || {};
+  return { success: false, code: err.code, message: err.message || "Request failed" };
+}
+
+function escHtml(str) {
+  if (str == null) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" })
+    + " " + d.toLocaleTimeString("en-GB", { hour:"2-digit", minute:"2-digit" });
+}
+
+function showLoginAlert(msg, type) {
+  const el = document.getElementById("login-alert");
+  el.innerHTML = `<div class="alert alert-${type === "error" ? "error" : "success"}" style="margin-bottom:16px;">${escHtml(msg)}</div>`;
+}
+
+function showGlobalAlert(msg, type) {
+  const el = document.getElementById("global-alert");
+  el.innerHTML = `<div class="alert alert-${type === "error" ? "error" : "success"}">${escHtml(msg)}</div>`;
+  setTimeout(() => { el.innerHTML = ""; }, 5000);
+}
+
+function setLoginLoading(on) {
+  document.getElementById("btn-send-link").disabled = on;
+  document.getElementById("btn-send-link").textContent = on ? "Checking…" : "Send Access Token";
+}
+
+
+// =============================================================================
+// BREAK-GLASS (Phase 29A Stage 3)
+// All grant lifecycle + reads go through the ops-dashboard edge function,
+// which dispatches to SECURITY DEFINER functions in sentinel_audit. The UI
+// here is a thin client; rules (dual-approval, CEO-mandatory, no self-approve,
+// active-grant verification) are enforced server-side.
+// =============================================================================
+
+// Sub-tab switching for break-glass
+document.querySelectorAll(".bg-subtab").forEach(t => {
+  t.addEventListener("click", () => {
+    document.querySelectorAll(".bg-subtab").forEach(x => x.classList.remove("active"));
+    document.querySelectorAll(".bg-subpanel").forEach(p => p.style.display = "none");
+    t.classList.add("active");
+    document.getElementById("bg-panel-" + t.dataset.subtab).style.display = "block";
+    // Lazy-load content on tab activation
+    if (t.dataset.subtab === "approvals") loadBgApprovals();
+    if (t.dataset.subtab === "active")    loadBgActive();
+    if (t.dataset.subtab === "query")     loadBgQueryGrants();
+    if (t.dataset.subtab === "history")   loadBgHistory();
+  });
+});
+
+// Show jurisdiction picker only when reason_category = lawful_access
+document.getElementById("bg-reason-category").addEventListener("change", (e) => {
+  document.getElementById("bg-jurisdiction-group").style.display =
+    (e.target.value === "lawful_access") ? "flex" : "none";
+});
+
+// — Request submission
+document.getElementById("btn-bg-submit-request").addEventListener("click", async () => {
+  const body = {
+    stated_reason:      document.getElementById("bg-stated-reason").value.trim(),
+    reason_category:    document.getElementById("bg-reason-category").value,
+    jurisdiction:       document.getElementById("bg-jurisdiction").value || null,
+    target_account_id:  document.getElementById("bg-target-account").value.trim() || null,
+    desired_expires_at: document.getElementById("bg-expires-at").value.trim() || null,
+  };
+  if (!body.stated_reason) {
+    return showBgAlert("bg-request-alert", "Stated reason is required.", "error");
+  }
+  if (body.reason_category === "lawful_access" && !body.jurisdiction) {
+    return showBgAlert("bg-request-alert", "Jurisdiction is required for lawful_access.", "error");
+  }
+  try {
+    const res  = await apiFetch("POST", "/breakglass/request", body);
+    const data = unwrap(await res.json());
+    if (!data.success) {
+      return showBgAlert("bg-request-alert", data.message || "Request failed.", "error");
+    }
+    showBgAlert("bg-request-alert",
+      "Grant request opened: " + data.grant_id + " — pending dual approval.", "success");
+    document.getElementById("bg-stated-reason").value = "";
+    document.getElementById("bg-target-account").value = "";
+    document.getElementById("bg-expires-at").value = "";
+  } catch (e) {
+    showBgAlert("bg-request-alert", "Network error: " + e.message, "error");
+  }
+});
+
+// — Approvals
+document.getElementById("btn-bg-refresh-approvals").addEventListener("click", loadBgApprovals);
+
+async function loadBgApprovals() {
+  const loading = document.getElementById("bg-approvals-loading");
+  const list = document.getElementById("bg-approvals-list");
+  loading.style.display = "flex"; list.innerHTML = "";
+  try {
+    const res  = await apiFetch("GET", "/breakglass/approvals");
+    const data = unwrap(await res.json());
+    loading.style.display = "none";
+    if (!data.success) {
+      return showBgAlert("bg-approvals-alert", data.message || "Load failed.", "error");
+    }
+    const grants = data.grants || [];
+    if (grants.length === 0) {
+      list.innerHTML = '<div class="empty-state">Nothing pending your approval.</div>';
+      return;
+    }
+    list.innerHTML = grants.map(g => renderBgGrantCard(g, "approvals")).join("");
+    // Wire approve/deny buttons
+    list.querySelectorAll("[data-action='approve']").forEach(b => {
+      b.addEventListener("click", () => bgApprove(b.dataset.grant));
+    });
+    list.querySelectorAll("[data-action='deny']").forEach(b => {
+      b.addEventListener("click", () => bgDeny(b.dataset.grant));
+    });
+  } catch (e) {
+    loading.style.display = "none";
+    showBgAlert("bg-approvals-alert", "Network error: " + e.message, "error");
+  }
+}
+
+async function bgApprove(grantId) {
+  if (!confirm("Approve grant " + grantId + "?")) return;
+  const res  = await apiFetch("POST", `/breakglass/approvals/${grantId}/approve`, {});
+  const data = unwrap(await res.json());
+  if (!data.success) {
+    return showBgAlert("bg-approvals-alert", data.message || "Approve failed.", "error");
+  }
+  showBgAlert("bg-approvals-alert", "Grant new state: " + data.new_state, "success");
+  loadBgApprovals();
+}
+
+async function bgDeny(grantId) {
+  const reason = prompt("Reason for denial (optional):");
+  const res  = await apiFetch("POST", `/breakglass/approvals/${grantId}/deny`, { reason });
+  const data = unwrap(await res.json());
+  if (!data.success) {
+    return showBgAlert("bg-approvals-alert", data.message || "Deny failed.", "error");
+  }
+  showBgAlert("bg-approvals-alert", "Grant denied.", "success");
+  loadBgApprovals();
+}
+
+// — Active grants
+document.getElementById("btn-bg-refresh-active").addEventListener("click", loadBgActive);
+
+async function loadBgActive() {
+  const loading = document.getElementById("bg-active-loading");
+  const list = document.getElementById("bg-active-list");
+  loading.style.display = "flex"; list.innerHTML = "";
+  try {
+    const res  = await apiFetch("GET", "/breakglass/active");
+    const data = unwrap(await res.json());
+    loading.style.display = "none";
+    if (!data.success) {
+      return showBgAlert("bg-active-alert", data.message || "Load failed.", "error");
+    }
+    const grants = data.grants || [];
+    if (grants.length === 0) {
+      list.innerHTML = '<div class="empty-state">No active grants right now.</div>';
+      return;
+    }
+    list.innerHTML = grants.map(g => renderBgGrantCard(g, "active")).join("");
+    list.querySelectorAll("[data-action='revoke']").forEach(b => {
+      b.addEventListener("click", () => bgRevoke(b.dataset.grant));
+    });
+  } catch (e) {
+    loading.style.display = "none";
+    showBgAlert("bg-active-alert", "Network error: " + e.message, "error");
+  }
+}
+
+async function bgRevoke(grantId) {
+  const reason = prompt("Reason for revocation (optional):");
+  const res  = await apiFetch("POST", `/breakglass/active/${grantId}/revoke`, { reason });
+  const data = unwrap(await res.json());
+  if (!data.success) {
+    return showBgAlert("bg-active-alert", data.message || "Revoke failed.", "error");
+  }
+  showBgAlert("bg-active-alert", "Grant revoked.", "success");
+  loadBgActive();
+}
+
+// — Query
+async function loadBgQueryGrants() {
+  const sel = document.getElementById("bg-query-grant");
+  sel.innerHTML = '<option value="">— loading —</option>';
+  try {
+    const res  = await apiFetch("GET", "/breakglass/active");
+    const data = unwrap(await res.json());
+    if (!data.success) {
+      sel.innerHTML = `<option value="">${escHtml(data.message || "load failed")}</option>`;
+      return;
+    }
+    const grants = data.grants || [];
+    sel.innerHTML = grants.length === 0
+      ? '<option value="">— no active grants —</option>'
+      : grants.map(g => `<option value="${g.grant_id}">${escHtml(g.grant_id.slice(0,8))} · ${escHtml(g.stated_reason || "")}</option>`).join("");
+  } catch (e) {
+    sel.innerHTML = `<option value="">network error: ${escHtml(e.message)}</option>`;
+  }
+}
+
+document.getElementById("btn-bg-run-query").addEventListener("click", async () => {
+  const grant_id          = document.getElementById("bg-query-grant").value;
+  const fn                = document.getElementById("bg-query-function").value;
+  const target_account_id = document.getElementById("bg-query-target").value.trim();
+  const limit             = parseInt(document.getElementById("bg-query-limit").value, 10) || 100;
+  const result            = document.getElementById("bg-query-result");
+
+  if (!grant_id || !target_account_id) {
+    return showBgAlert("bg-query-alert", "Grant and target account_id are required.", "error");
+  }
+  result.innerHTML = '<div class="loading-state"><div class="spinner"></div> Reading…</div>';
+
+  try {
+    const body = { grant_id, target_account_id, limit };
+    const res  = await apiFetch("POST", `/breakglass/query/${fn}`, body);
+    const data = unwrap(await res.json());
+    if (!data.success) {
+      result.innerHTML = "";
+      return showBgAlert("bg-query-alert", data.message || "Read failed.", "error");
+    }
+    const payload = data.row ?? data.rows ?? null;
+    showBgAlert("bg-query-alert", "Read complete — substrate_access_log row written.", "success");
+    result.innerHTML =
+      '<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;"><pre style="margin:0;font-size:12px;color:var(--text);white-space:pre-wrap;word-break:break-all;">'
+      + escHtml(JSON.stringify(payload, null, 2)) + "</pre></div>";
+  } catch (e) {
+    result.innerHTML = "";
+    showBgAlert("bg-query-alert", "Network error: " + e.message, "error");
+  }
+});
+
+// — History
+document.getElementById("btn-bg-refresh-history").addEventListener("click", loadBgHistory);
+
+async function loadBgHistory() {
+  const loading = document.getElementById("bg-history-loading");
+  const list = document.getElementById("bg-history-list");
+  loading.style.display = "flex"; list.innerHTML = "";
+  try {
+    const res  = await apiFetch("GET", "/breakglass/history");
+    const data = unwrap(await res.json());
+    loading.style.display = "none";
+    if (!data.success) {
+      return showBgAlert("bg-history-alert", data.message || "Load failed.", "error");
+    }
+    const grants = data.grants || [];
+    if (grants.length === 0) {
+      list.innerHTML = '<div class="empty-state">No past grants.</div>';
+      return;
+    }
+    list.innerHTML = grants.map(g => renderBgGrantCard(g, "history")).join("");
+  } catch (e) {
+    loading.style.display = "none";
+    showBgAlert("bg-history-alert", "Network error: " + e.message, "error");
+  }
+}
+
+// — Render helpers
+function renderBgGrantCard(g, context) {
+  const stateColor = (
+    g.current_state === "active"    ? "var(--green)" :
+    g.current_state === "requested" ? "var(--amber)" :
+    g.current_state && g.current_state.startsWith("pending_") ? "var(--amber)" :
+    g.current_state === "denied"    ? "var(--red)" :
+    g.current_state === "revoked"   ? "var(--grey)" :
+    g.current_state === "expired"   ? "var(--grey)" :
+                                       "var(--text-dim)"
+  );
+  const ceo = g.ceo_approver_email     ? escHtml(g.ceo_approver_email)     : "—";
+  const non = g.non_ceo_approver_email ? escHtml(g.non_ceo_approver_email) : "—";
+  const exp = g.expires_at ? formatDate(g.expires_at) : "no expiry";
+  const target = g.target_account_id ? escHtml(g.target_account_id) : "<em>system-wide</em>";
+  let actions = "";
+  if (context === "approvals") {
+    actions =
+      `<div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn btn-primary" data-action="approve" data-grant="${escHtml(g.grant_id)}">Approve</button>
+        <button class="btn btn-outline" data-action="deny" data-grant="${escHtml(g.grant_id)}">Deny</button>
+      </div>`;
+  } else if (context === "active") {
+    actions =
+      `<div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn btn-outline" data-action="revoke" data-grant="${escHtml(g.grant_id)}">Revoke</button>
+      </div>`;
+  }
+  return `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+        <span style="font-family:monospace;font-size:11px;color:var(--text-dim);">${escHtml(g.grant_id.slice(0,8))}</span>
+        <span style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;padding:2px 8px;border-radius:12px;border:1px solid ${stateColor};color:${stateColor};">${escHtml(g.current_state || "?")}</span>
+        <span style="font-size:11px;color:var(--text-dim);">${escHtml(g.reason_category || "")}${g.jurisdiction ? " · " + escHtml(g.jurisdiction) : ""}</span>
+      </div>
+      <div style="font-size:13px;margin-bottom:6px;color:var(--text);">${escHtml(g.stated_reason || "")}</div>
+      <div style="font-size:11px;color:var(--text-dim);line-height:1.6;">
+        Requester: ${escHtml(g.requester_email)} · Requested: ${formatDate(g.requested_at)}<br>
+        Target: ${target} · Expires: ${exp}<br>
+        CEO approver: ${ceo} · Non-CEO approver: ${non}
+      </div>
+      ${actions}
+    </div>`;
+}
+
+function showBgAlert(elId, msg, type) {
+  const el = document.getElementById(elId);
+  el.innerHTML = `<div class="alert alert-${type === "error" ? "error" : "success"}">${escHtml(msg)}</div>`;
+  setTimeout(() => { el.innerHTML = ""; }, 6000);
+}
+
+
+// =============================================================================
+// PHASE 29A STAGE 6C — Dashboard UI: tier gating, case-file viewer,
+// close/reopen/config screens, fire-mode + in-app banner surface.
+// UI gating is convenience only; the edge routes/RPCs enforce every gate
+// server-side and the UI surfaces their 403s in a banner.
+// =============================================================================
+
+// --- Tier model -------------------------------------------------------------
+// 4-tier (sentinel_ops.dashboard_access.access_level). Debugging chain:
+// steward > coordinator > responder. engineer = parallel read-only surface.
+const TIER_CAPS = {
+  steward:     ["canTriage", "canClose", "canReopen", "canViewCaseFile", "canEditConfig"],
+  coordinator: ["canTriage", "canClose", "canReopen", "canViewCaseFile"],
+  responder:   ["canTriage", "canClose", "canViewCaseFile"],
+  // engineer is a PARALLEL tier: it does NOT share the debugging-chain
+  // capabilities above; its sole capability is the engineering-notes channel
+  // (Phase 29A Stage 7). engineer-only — no other tier holds canEngNotes.
+  engineer:    ["canEngNotes"],
+};
+function canActorDo(action) {
+  const caps = TIER_CAPS[accessLevel] || [];
+  return caps.includes(action);
+}
+
+// --- whoami -----------------------------------------------------------------
+// Fetch the actor's verified tier from the edge (GET /whoami). Identity comes
+// from the bearer token server-side; the UI never trusts a client-set tier.
+async function refreshWhoami() {
+  try {
+    const res  = await apiFetch("GET", "/whoami");
+    const data = unwrap(await res.json());
+    if (data.success && data.access_level) {
+      accessLevel = data.access_level;
+      localStorage.setItem("ops_access_level", accessLevel);
+      if (data.email) { userEmail = data.email; localStorage.setItem("ops_email", userEmail); }
+    }
+  } catch (e) {
+    // Non-fatal: with no known tier, canActorDo() returns false for everything,
+    // so gated controls simply stay hidden (fail closed).
+  }
+  applyTierVisibility();
+  document.getElementById("access-info").textContent =
+    userEmail ? `${userEmail} · ${accessLevel || "unknown tier"}` : (accessLevel || "");
+}
+
+function applyTierVisibility() {
+  const cfgTab = document.getElementById("tab-config");
+  if (cfgTab) cfgTab.style.display = canActorDo("canEditConfig") ? "block" : "none";
+  // Stage 6E: triggering + the async "Recent pattern reviews" list are steward-only.
+  const isSteward = canActorDo("canEditConfig");
+  const trigBar   = document.getElementById("trigger-pattern-bar");
+  const recentSec = document.getElementById("recent-reviews-section");
+  if (trigBar)   trigBar.style.display   = isSteward ? "flex"  : "none";
+  if (recentSec) recentSec.style.display = isSteward ? "block" : "none";
+  if (isSteward) loadRecentPatterns();
+
+  // Phase 33.4: the Team tab is steward-only (same gate as Config).
+  const teamTab = document.getElementById("tab-team");
+  if (teamTab) teamTab.style.display = isSteward ? "block" : "none";
+
+  // Stage 7: the Engineering Notes tab is engineer-only (parallel tier).
+  const engNotesTab = document.getElementById("tab-eng-notes");
+  const isEngineer  = canActorDo("canEngNotes");
+  if (engNotesTab) engNotesTab.style.display = isEngineer ? "block" : "none";
+  if (isEngineer) loadEngNotes();
+}
+
+// --- In-app banner surface --------------------------------------------------
+// Stacked banners at top of page. success auto-dismisses (3s); error/fire
+// persist until dismissed. Used for fire-mode, edge errors, success acks.
+let _bannerSeq = 0;
+function pushBanner(message, type) {
+  const stack = document.getElementById("banner-stack");
+  if (!stack) return null;
+  const id = "banner-" + (++_bannerSeq);
+  const el = document.createElement("div");
+  el.id = id;
+  el.className = "app-banner app-banner-" + (type || "info");
+  el.innerHTML =
+    `<span class="app-banner-msg">${escHtml(message)}</span>` +
+    `<button class="app-banner-x" aria-label="Dismiss">×</button>`;
+  el.querySelector(".app-banner-x").addEventListener("click", () => el.remove());
+  stack.appendChild(el);
+  if (type === "success") setTimeout(() => el.remove(), 3000);
+  return id;
+}
+
+// --- Fire-mode detection (Option A: computed from the loaded issue list) ----
+// Threshold: 10 issues in the last 30 minutes. No new substrate; counts from
+// the already-loaded list on each refresh.
+//
+// Timestamp source (verified Stage 6D): ops_list_issues does NOT return
+// acknowledged_at — its rows carry submitted_at. Auto-ack (Stage 6A.4) sets
+// acknowledged_at ≈ submitted_at on intake, so submitted_at is an accurate
+// volume signal. Prefer acknowledged_at if a future list change exposes it,
+// else fall back to submitted_at (present today).
+const FIRE_THRESHOLD = 10;
+const FIRE_WINDOW_MS  = 30 * 60 * 1000;
+let fireMode = false;
+let _fireBannerId = null;
+function detectFireMode(issues) {
+  const now = Date.now();
+  const recent = (issues || []).filter(i => {
+    const ts = i.acknowledged_at || i.submitted_at;
+    const t = ts ? new Date(ts).getTime() : NaN;
+    return !isNaN(t) && (now - t) <= FIRE_WINDOW_MS;
+  }).length;
+  const wasFire = fireMode;
+  fireMode = recent >= FIRE_THRESHOLD;
+  if (fireMode && !wasFire) {
+    _fireBannerId = pushBanner(
+      `FIRE MODE: high issue volume detected (${recent} issues in 30 min). ` +
+      `Investigate system health before triaging individually.`, "fire");
+  } else if (!fireMode && wasFire && _fireBannerId) {
+    const el = document.getElementById(_fireBannerId);
+    if (el) el.remove();
+    _fireBannerId = null;
+  }
+}
+
+// --- Case-file viewer -------------------------------------------------------
+async function loadCaseFile(issueId, btn) {
+  const target = document.getElementById(`casefile-body-${issueId}`);
+  if (!target) return;
+  if (btn) { btn.disabled = true; btn.textContent = "Loading…"; }
+  target.innerHTML = `<div class="loading-state"><div class="spinner"></div> Loading case file…</div>`;
+  try {
+    const res  = await apiFetch("POST", `/issues/${issueId}/case-file`);
+    const data = unwrap(await res.json());
+    if (!data.success) {
+      target.innerHTML = renderCaseFileError(data.code, data.message);
+      if (data.code !== "NO_CASE_FILE_ATTACHED" && data.code !== "CASE_FILE_NOT_FOUND") {
+        pushBanner(data.message || "Case-file read failed.", "error");
+      }
+      if (btn) { btn.style.display = "none"; }
+      return;
+    }
+    target.innerHTML = renderCaseFile(data.case_file || data);
+    if (btn) { btn.style.display = "none"; }
+  } catch (e) {
+    target.innerHTML = `<div class="alert alert-error">Network error: ${escHtml(e.message)}</div>`;
+    pushBanner("Case-file network error: " + e.message, "error");
+    if (btn) { btn.disabled = false; btn.textContent = "Load case file"; }
+  }
+}
+
+function renderCaseFileError(code, message) {
+  if (code === "NO_CASE_FILE_ATTACHED")
+    return `<div class="alert" style="background:var(--grey-bg);border:1px solid var(--border);color:var(--text-dim);">User didn't attach a case file with this report.</div>`;
+  if (code === "CASE_FILE_NOT_FOUND")
+    return `<div class="alert" style="background:var(--grey-bg);border:1px solid var(--border);color:var(--text-dim);">Case file was purged or never assembled.</div>`;
+  return `<div class="alert alert-error">${escHtml(message || "Case-file read failed.")}</div>`;
+}
+
+// Defensive render against the Stage 5A (5a.2) case-file shape. Probes the
+// documented field names and falls back gracefully so an unexpected shape
+// still renders readably rather than throwing.
+function renderCaseFile(cf) {
+  cf = cf || {};
+  const outcome = (cf.outcome || cf.status || "unknown");
+  const oColor = outcome === "succeeded" ? "var(--green)"
+               : outcome === "failed"    ? "var(--red)"
+               : outcome === "partial"   ? "var(--amber)" : "var(--text-dim)";
+  const timing = cf.timing || cf;
+  const actor  = cf.actor || cf.identity || {};
+  // Live 5a.2 shape (verified Stage 6D) carries ONE `wrappers` array, not
+  // separate edge_/engine_ keys. Split by the element's layer when present;
+  // fall back to the legacy separate keys for forward-compat; anything without
+  // a recognisable layer renders under a generic "Wrappers" section.
+  const allW   = Array.isArray(cf.wrappers) ? cf.wrappers : [];
+  const layerOf = (w) => String((w && (w.layer || w.kind || w.wrapper_kind || w.type)) || "").toLowerCase();
+  const edgeW  = cf.edge_wrappers || cf.edge || allW.filter(w => layerOf(w).includes("edge"));
+  const engW   = cf.engine_wrappers || cf.engine || allW.filter(w => layerOf(w).includes("engine"));
+  const otherW = allW.filter(w => { const l = layerOf(w); return !l.includes("edge") && !l.includes("engine"); });
+  const invs   = cf.invocations || [];
+  const aux    = cf.auxiliary || cf.aux || {};
+  const err    = cf.error || null;
+
+  const fmtMs = (ms) => (ms == null ? "—" : `${ms} ms`);
+  const wrapLine = (w) => {
+    const oc = w.outcome || w.status || "?";
+    const c = oc === "succeeded" ? "var(--green)" : oc === "failed" ? "var(--red)" : "var(--amber)";
+    return `<div class="cf-wrap"><span style="color:${c}">●</span> ${escHtml(w.name || w.label || w.key || "wrapper")} <span style="color:var(--text-dim)">— ${escHtml(String(oc))}</span></div>`;
+  };
+
+  let html = "";
+  html += `<div class="cf-section"><span class="cf-h">Outcome</span> <span class="badge" style="color:${oColor};border:1px solid ${oColor};background:transparent;">${escHtml(String(outcome))}</span></div>`;
+  html += `<div class="cf-section"><span class="cf-h">Timing</span>
+    <div class="cf-kv">started: ${escHtml(timing.started_at || "—")}</div>
+    <div class="cf-kv">ended: ${escHtml(timing.ended_at || "—")}</div>
+    <div class="cf-kv">duration: ${fmtMs(timing.duration_ms)}</div></div>`;
+  html += `<div class="cf-section"><span class="cf-h">Actor</span>
+    <div class="cf-kv">account_id: ${escHtml(actor.account_id || "—")}</div>
+    <div class="cf-kv">role: ${escHtml(actor.role || "—")}</div>
+    <div class="cf-kv">entry_path: ${escHtml(actor.entry_path || "—")}</div></div>`;
+  html += `<div class="cf-section"><span class="cf-h">Edge wrappers (${Array.isArray(edgeW) ? edgeW.length : 0})</span>${(Array.isArray(edgeW) ? edgeW : []).map(wrapLine).join("") || '<div class="cf-kv">none</div>'}</div>`;
+  html += `<div class="cf-section"><span class="cf-h">Engine wrappers (${Array.isArray(engW) ? engW.length : 0})</span>${(Array.isArray(engW) ? engW : []).map(wrapLine).join("") || '<div class="cf-kv">none</div>'}</div>`;
+  if (otherW.length) html += `<div class="cf-section"><span class="cf-h">Wrappers (${otherW.length})</span>${otherW.map(wrapLine).join("")}</div>`;
+  html += `<div class="cf-section"><span class="cf-h">Invocations (${Array.isArray(invs) ? invs.length : 0})</span>${renderInvocationTree(invs)}</div>`;
+  const tablesR = aux.tables_read || aux.reads || [];
+  const tablesW = aux.tables_written || aux.writes || [];
+  const llm     = aux.llm_calls || aux.llm || [];
+  html += `<div class="cf-section"><span class="cf-h">Auxiliary</span>
+    <div class="cf-kv">tables read: ${escHtml((Array.isArray(tablesR) ? tablesR.join(", ") : String(tablesR)) || "—")}</div>
+    <div class="cf-kv">tables written: ${escHtml((Array.isArray(tablesW) ? tablesW.join(", ") : String(tablesW)) || "—")}</div>
+    <div class="cf-kv">LLM calls: ${Array.isArray(llm) ? llm.length : (llm || "—")}</div></div>`;
+  if (err) {
+    html += `<div class="cf-section"><span class="cf-h" style="color:var(--red)">Error</span>
+      <div class="tech-detail-body open" style="margin-top:6px;">${escHtml(typeof err === "string" ? err : JSON.stringify(err, null, 2))}</div></div>`;
+  }
+  return `<div class="cf-card">${html}</div>`;
+}
+
+// Indent each invocation by its parent_invocation_id chain depth; preserve the
+// (chronological) order the walker returned.
+function renderInvocationTree(invs) {
+  if (!Array.isArray(invs) || invs.length === 0) return '<div class="cf-kv">none</div>';
+  const byId = {};
+  invs.forEach(n => { byId[n.invocation_id ?? n.id] = n; });
+  const depthOf = (n) => {
+    let d = 0, p = n.parent_invocation_id;
+    const seen = new Set();
+    while (p != null && byId[p] && !seen.has(p)) { seen.add(p); d++; p = byId[p].parent_invocation_id; }
+    return d;
+  };
+  return invs.map(n => {
+    const d = depthOf(n);
+    const oc = n.outcome || n.status || "";
+    const c = oc === "succeeded" ? "var(--green)" : oc === "failed" ? "var(--red)" : "var(--text-dim)";
+    const name = n.name || n.label || n.function || n.invocation_id || "invocation";
+    return `<div class="cf-inv" style="padding-left:${d * 16}px;"><span style="color:${c}">▸</span> ${escHtml(String(name))}${oc ? ` <span style="color:var(--text-dim)">— ${escHtml(String(oc))}</span>` : ""}</div>`;
+  }).join("");
+}
+
+// --- Close / reopen modals --------------------------------------------------
+function showCloseModal(issueId) {
+  openModal(`
+    <h3 style="margin-bottom:14px;font-size:16px;">Close issue</h3>
+    <div class="form-group" style="margin-bottom:12px;">
+      <label>Resolution state</label>
+      <select id="close-state">
+        <option value="resolved">resolved</option>
+        <option value="closed">closed</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:16px;">
+      <label>Close reason</label>
+      <textarea id="close-reason" placeholder="Why is this being closed?"></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" id="close-confirm">Close issue</button>
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+    </div>`);
+  document.getElementById("close-confirm").addEventListener("click", () => doClose(issueId));
+}
+async function doClose(issueId) {
+  const resolution_state = document.getElementById("close-state").value;
+  const close_reason     = document.getElementById("close-reason").value.trim() || null;
+  try {
+    const res  = await apiFetch("POST", `/issues/${issueId}/close`, { resolution_state, close_reason });
+    const data = unwrap(await res.json());
+    if (!data.success) { pushBanner(data.message || "Close failed.", "error"); return; }
+    closeModal();
+    pushBanner("Issue closed.", "success");
+    await refreshIssues();
+  } catch (e) { pushBanner("Close failed: " + e.message, "error"); }
+}
+function showReopenModal(issueId) {
+  openModal(`
+    <h3 style="margin-bottom:14px;font-size:16px;">Reopen issue</h3>
+    <p style="color:var(--text-dim);font-size:12px;margin-bottom:12px;">Reopening restarts the 48h commitment clock.</p>
+    <div class="form-group" style="margin-bottom:16px;">
+      <label>Reopen reason</label>
+      <textarea id="reopen-reason" placeholder="Why is this being reopened?"></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" id="reopen-confirm">Reopen issue</button>
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+    </div>`);
+  document.getElementById("reopen-confirm").addEventListener("click", () => doReopen(issueId));
+}
+async function doReopen(issueId) {
+  const reopen_reason = document.getElementById("reopen-reason").value.trim() || null;
+  try {
+    const res  = await apiFetch("POST", `/issues/${issueId}/reopen`, { reopen_reason });
+    const data = unwrap(await res.json());
+    if (!data.success) { pushBanner(data.message || "Reopen failed.", "error"); return; }
+    closeModal();
+    pushBanner("Issue reopened — 48h clock restarted.", "success");
+    await refreshIssues();
+  } catch (e) { pushBanner("Reopen failed: " + e.message, "error"); }
+}
+
+// --- Modal primitive --------------------------------------------------------
+function openModal(innerHtml) {
+  let ov = document.getElementById("modal-overlay");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.id = "modal-overlay";
+    ov.className = "modal-overlay";
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = `<div class="modal-card">${innerHtml}</div>`;
+  ov.style.display = "flex";
+}
+function closeModal() {
+  const ov = document.getElementById("modal-overlay");
+  if (ov) { ov.style.display = "none"; ov.innerHTML = ""; }
+}
+
+// --- Config edit screen (steward only) --------------------------------------
+// Two editable values, each saved independently (audit-clean). 48h/90d defaults
+// are NOT hard-coded here — they are read from GET /config every load.
+const CONFIG_FIELDS = [
+  { key: "user_commitment_window_hours", label: "User commitment window (hours)" },
+  { key: "stale_sweep_window_days",      label: "Stale sweep window (days)" },
+];
+async function loadConfig() {
+  const host = document.getElementById("config-list");
+  if (!host) return;
+  if (!canActorDo("canEditConfig")) {
+    host.innerHTML = `<div class="alert alert-error">Steward access required to edit config.</div>`;
+    return;
+  }
+  host.innerHTML = `<div class="loading-state"><div class="spinner"></div> Loading config…</div>`;
+  try {
+    const res  = await apiFetch("GET", "/config");
+    const data = unwrap(await res.json());
+    if (!data.success) { host.innerHTML = `<div class="alert alert-error">${escHtml(data.message)}</div>`; return; }
+    const rows = data.config || [];
+    const byKey = {};
+    rows.forEach(r => { byKey[r.config_key ?? r.key] = r; });
+    host.innerHTML = CONFIG_FIELDS.map(f => {
+      const r = byKey[f.key] || {};
+      const val = r.config_value ?? r.value ?? "";
+      const upd = r.updated_at ? formatDate(r.updated_at) : "—";
+      const by  = r.updated_by ?? r.updated_by_email ?? "—";
+      return `
+        <div class="config-row">
+          <div class="form-group" style="flex:1;">
+            <label>${escHtml(f.label)}</label>
+            <input type="number" id="cfg-${f.key}" value="${escHtml(String(val))}" />
+            <div class="cf-kv" id="cfg-meta-${f.key}">Last updated: ${escHtml(upd)} by ${escHtml(String(by))}</div>
+          </div>
+          <button class="btn btn-primary" onclick="saveConfig('${f.key}')" style="align-self:flex-end;">Save</button>
+        </div>`;
+    }).join("");
+  } catch (e) {
+    host.innerHTML = `<div class="alert alert-error">Failed to load config: ${escHtml(e.message)}</div>`;
+  }
+}
+async function saveConfig(key) {
+  const input = document.getElementById(`cfg-${key}`);
+  const raw = input.value.trim();
+  if (raw === "") { pushBanner("Value is required.", "error"); return; }
+  const num = Number(raw);
+  if (!Number.isFinite(num)) { pushBanner("Value must be a number.", "error"); return; }
+  try {
+    const res  = await apiFetch("POST", `/config/${key}`, { new_value: num });
+    const data = unwrap(await res.json());
+    if (!data.success) { pushBanner(data.message || "Config save failed.", "error"); return; }
+    const upd = data.updated_at ? formatDate(data.updated_at) : "just now";
+    const by  = data.updated_by ?? data.updated_by_email ?? userEmail ?? "—";
+    const meta = document.getElementById(`cfg-meta-${key}`);
+    if (meta) meta.textContent = `Last updated: ${upd} by ${by}`;
+    pushBanner("Config saved.", "success");
+  } catch (e) { pushBanner("Config save failed: " + e.message, "error"); }
+}
+
+// =============================================================================
+// Phase 33.4 — Team surface (steward-only staff management)
+// Members + break-glass approvers. UI gating is convenience; the edge + RPCs
+// enforce the steward gate and derive the actor from the token, not the body.
+// =============================================================================
+function teamAlert(msg, type) {
+  const el = document.getElementById("team-alert");
+  if (!el) return;
+  el.innerHTML = `<div class="alert alert-${type === "error" ? "error" : "success"}">${escHtml(msg)}</div>`;
+  setTimeout(() => { if (el) el.innerHTML = ""; }, 6000);
+}
+
+async function loadTeam() {
+  if (!canActorDo("canEditConfig")) return;   // steward gate mirrors Config
+  await Promise.all([loadMembers(), loadApprovers()]);
+}
+
+async function loadMembers() {
+  const host = document.getElementById("members-list");
+  if (!host) return;
+  host.innerHTML = `<div class="loading-state"><div class="spinner"></div> Loading members…</div>`;
+  try {
+    const res  = await apiFetch("GET", "/members");
+    const data = unwrap(await res.json());
+    if (!data.success) { host.innerHTML = `<div class="alert alert-error">${escHtml(data.message)}</div>`; return; }
+    const rows = data.members || [];
+    if (!rows.length) { host.innerHTML = `<div style="color:var(--text-dim);font-size:13px;">No members.</div>`; return; }
+    host.innerHTML = rows.map(m => {
+      const status = m.retired ? "retired" : (m.activated ? "active" : "invited");
+      const color  = m.retired ? "var(--text-dim)" : (m.activated ? "#2e9d5b" : "#c98a1a");
+      const action = m.retired ? "" :
+        `<button class="team-setpw-member btn" data-email="${escHtml(m.email)}" style="padding:4px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;">Set pw</button>
+         <button class="team-retire-member btn" data-email="${escHtml(m.email)}" style="padding:4px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;">Retire</button>`;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+        <span style="flex:1;font-size:13px;color:${m.retired ? 'var(--text-dim)' : 'var(--text)'};">${escHtml(m.email)}</span>
+        <span style="font-size:12px;color:var(--text-dim);width:96px;">${escHtml(m.access_level)}</span>
+        <span style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;color:${color};width:66px;">${status}</span>
+        ${action}
+      </div>`;
+    }).join("");
+  } catch (e) { host.innerHTML = `<div class="alert alert-error">Failed to load members: ${escHtml(e.message)}</div>`; }
+}
+
+async function loadApprovers() {
+  const host = document.getElementById("approvers-list");
+  if (!host) return;
+  host.innerHTML = `<div class="loading-state"><div class="spinner"></div> Loading approvers…</div>`;
+  try {
+    const res  = await apiFetch("GET", "/approvers");
+    const data = unwrap(await res.json());
+    if (!data.success) { host.innerHTML = `<div class="alert alert-error">${escHtml(data.message)}</div>`; return; }
+    const rows = data.approvers || [];
+    if (!rows.length) { host.innerHTML = `<div style="color:var(--text-dim);font-size:13px;">No approvers.</div>`; return; }
+    host.innerHTML = rows.map(a => {
+      const status = a.is_active ? "active" : "retired";
+      const color  = a.is_active ? "#2e9d5b" : "var(--text-dim)";
+      const seat   = a.is_ceo_seat ? `<span style="font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid var(--border);color:var(--text);">CEO seat</span>` : "";
+      const action = a.is_active ?
+        `<button class="team-retire-approver btn" data-email="${escHtml(a.email)}" style="padding:4px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;">Retire</button>` : "";
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+        <span style="flex:1;font-size:13px;color:${a.is_active ? 'var(--text)' : 'var(--text-dim)'};">${escHtml(a.email)}</span>
+        <span style="width:84px;">${seat}</span>
+        <span style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;color:${color};width:66px;">${status}</span>
+        ${action}
+      </div>`;
+    }).join("");
+  } catch (e) { host.innerHTML = `<div class="alert alert-error">Failed to load approvers: ${escHtml(e.message)}</div>`; }
+}
+
+async function inviteMember() {
+  const email = (document.getElementById("member-email").value || "").trim();
+  const tier  = document.getElementById("member-tier").value;
+  if (!email) { teamAlert("Email is required.", "error"); return; }
+  try {
+    const res  = await apiFetch("POST", "/members", { email, tier });
+    const data = unwrap(await res.json());
+    if (!data.success) { teamAlert(data.message || "Invite failed.", "error"); return; }
+    document.getElementById("member-email").value = "";
+    teamAlert(`Invited ${email} as ${tier}. They activate on first sign-in.`, "success");
+    loadMembers();
+  } catch (e) { teamAlert("Invite failed: " + e.message, "error"); }
+}
+
+async function retireMember(email) {
+  if (!confirm(`Retire ${email}? Their access and any active session end immediately.`)) return;
+  try {
+    const res  = await apiFetch("POST", `/members/${encodeURIComponent(email)}/retire`);
+    const data = unwrap(await res.json());
+    if (!data.success) { teamAlert(data.message || "Retire failed.", "error"); return; }
+    teamAlert(`Retired ${email}.`, "success");
+    loadMembers();
+  } catch (e) { teamAlert("Retire failed: " + e.message, "error"); }
+}
+
+async function addApprover() {
+  const email = (document.getElementById("approver-email").value || "").trim();
+  const isCeo = document.getElementById("approver-ceo").checked;
+  if (!email) { teamAlert("Email is required.", "error"); return; }
+  if (isCeo && !confirm(`Assign the CEO seat to ${email}? The current CEO is demoted to a plain approver.`)) return;
+  try {
+    const res  = await apiFetch("POST", "/approvers", { email, is_ceo_seat: isCeo });
+    const data = unwrap(await res.json());
+    if (!data.success) { teamAlert(data.message || "Add approver failed.", "error"); return; }
+    document.getElementById("approver-email").value = "";
+    document.getElementById("approver-ceo").checked = false;
+    teamAlert(`${email} is now ${isCeo ? "the CEO-seat approver" : "an approver"}.`, "success");
+    loadApprovers();
+  } catch (e) { teamAlert("Add approver failed: " + e.message, "error"); }
+}
+
+async function setMemberPassword(email) {
+  const pw = window.prompt(`Set a new password for ${email} (at least 8 characters):`);
+  if (pw == null) return;
+  if (pw.length < 8) { teamAlert("Password must be at least 8 characters.", "error"); return; }
+  try {
+    const res  = await apiFetch("POST", "/set-password", { new_password: pw, target_email: email });
+    const data = unwrap(await res.json());
+    if (!data.success) { teamAlert(data.message || "Could not set password.", "error"); return; }
+    teamAlert(`Password set for ${email}.`, "success");
+  } catch (e) { teamAlert("Could not set password: " + e.message, "error"); }
+}
+
+async function retireApprover(email) {
+  if (!confirm(`Retire approver ${email}?`)) return;
+  try {
+    const res  = await apiFetch("POST", `/approvers/${encodeURIComponent(email)}/retire`);
+    const data = unwrap(await res.json());
+    if (!data.success) { teamAlert(data.message || "Retire approver failed.", "error"); return; }
+    teamAlert(`Retired approver ${email}.`, "success");
+    loadApprovers();
+  } catch (e) { teamAlert("Retire approver failed: " + e.message, "error"); }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const mi = document.getElementById("member-invite-btn");
+  if (mi) mi.addEventListener("click", inviteMember);
+  const aa = document.getElementById("approver-add-btn");
+  if (aa) aa.addEventListener("click", addApprover);
+  // delegated retire buttons (emails come from the DB → data-attr, not inline onclick)
+  const ml = document.getElementById("members-list");
+  if (ml) ml.addEventListener("click", (e) => {
+    const sb = e.target.closest(".team-setpw-member");
+    if (sb) { setMemberPassword(sb.dataset.email); return; }
+    const b = e.target.closest(".team-retire-member");
+    if (b) retireMember(b.dataset.email);
+  });
+  const al = document.getElementById("approvers-list");
+  if (al) al.addEventListener("click", (e) => {
+    const b = e.target.closest(".team-retire-approver");
+    if (b) retireApprover(b.dataset.email);
+  });
+});
+</script>
+</body>
+</html>
