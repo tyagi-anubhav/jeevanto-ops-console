@@ -893,11 +893,66 @@ let allIssues    = [];
 // =============================================================================
 // Boot
 // =============================================================================
+// Boot / refresh — restore a stored session DETERMINISTICALLY.
+//
+// The refresh bug (Issue 2): the old boot called showApp(), which decided
+// steward-tab visibility from the CACHED tier (or from an unresolved /whoami) and
+// fired data loads without re-resolving auth first. A restored-but-rejected token
+// then hid the steward tabs (fail-closed to non-steward) AND left the issue
+// spinner spinning (loadIssues' 401 path returned without clearing it or
+// re-authing) — so only a manual logout/login recovered.
+//
+// Fix: on every load with a stored token, resolve /whoami ONCE up front; gate
+// tabs + fire loads ONLY after auth resolves; and on a definitive auth failure
+// show a clean re-auth prompt instead of a hung spinner. A valid token on refresh
+// then always restores the full steward view; a genuine non-steward still sees
+// only the public tabs; a transient server blip offers a retry, never a hang.
 (function boot() {
-  if (authToken) {
-    showApp();
-  }
+  if (authToken) restoreSession();
 })();
+
+async function restoreSession() {
+  // Show the app shell; the steward tabs stay hidden (their default) until
+  // /whoami resolves the authoritative tier — no gating decision on unresolved
+  // auth, and no trusting the cached tier for visibility.
+  document.getElementById("login-screen").style.display = "none";
+  document.getElementById("app").style.display = "flex";
+
+  const status = await refreshWhoami();          // 'ok' | 'unauthorized' | 'error'
+  if (status === "unauthorized") {
+    // Restored token is invalid/expired — return to a clean sign-in, never a hang.
+    forceReauth("Your session has expired. Please sign in again.");
+    return;
+  }
+  if (status === "error") {
+    // Transient (network / 5xx): keep the session, do NOT hang the spinners,
+    // and tell the operator to retry. The token is not cleared.
+    hideIssueSpinners();
+    showGlobalAlert("Couldn't reach the server to restore your session. Refresh to retry.", "error");
+    return;
+  }
+  // status === 'ok': tier + tab visibility are resolved. Now it is safe to load.
+  await loadIssues();
+  loadPatterns();
+}
+
+// Return to the sign-in screen with a message. Clears the rejected token so the
+// next load starts clean; keeps the remembered email to prefill the form.
+function forceReauth(message) {
+  localStorage.removeItem("ops_token");
+  localStorage.removeItem("ops_access_level");
+  authToken   = null;
+  accessLevel = null;
+  document.getElementById("app").style.display = "none";
+  document.getElementById("login-screen").style.display = "";
+  if (message) showLoginAlert(message, "error");
+}
+
+function hideIssueSpinners() {
+  ["open-loading", "resolved-loading"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = "none";
+  });
+}
 
 // =============================================================================
 // Auth
@@ -1046,18 +1101,18 @@ document.querySelectorAll(".tab[data-tab]").forEach(tab => {
 // =============================================================================
 // Show app
 // =============================================================================
+// Post-auth entry used by the in-band LOGIN flows (token paste / password), which
+// have just validated the token and awaited refreshWhoami() — so the tier and tab
+// visibility are already resolved here. (The boot/refresh path uses
+// restoreSession() instead, which resolves /whoami before any gating.) Apply
+// visibility defensively, then load.
 async function showApp(preloadedIssues) {
   document.getElementById("login-screen").style.display = "none";
   document.getElementById("app").style.display = "flex";
 
-  // Ensure we know the actor's tier (boot path may have a token but no tier yet).
-  if (!accessLevel) {
-    await refreshWhoami();
-  } else {
-    applyTierVisibility();
-    document.getElementById("access-info").textContent =
-      userEmail ? `${userEmail} · ${accessLevel}` : "";
-  }
+  applyTierVisibility();
+  document.getElementById("access-info").textContent =
+    userEmail ? `${userEmail} · ${accessLevel || "unknown tier"}` : (accessLevel || "");
 
   await loadIssues(preloadedIssues);
   loadPatterns();
@@ -1072,10 +1127,16 @@ async function loadIssues(preloaded) {
   if (!issues) {
     try {
       const res  = await apiFetch("GET", "/issues");
+      if (res.status === 401) { forceReauth("Your session has expired. Please sign in again."); return; }
       const data = unwrap(await res.json());
-      if (!data.success) { showGlobalAlert(data.message, "error"); return; }
+      if (!data.success) {
+        hideIssueSpinners();               // never leave the spinners hanging on a failed load
+        showGlobalAlert(data.message || "Failed to load issues.", "error");
+        return;
+      }
       issues = data.issues || [];
     } catch (e) {
+      hideIssueSpinners();
       showGlobalAlert("Failed to load issues: " + e.message, "error");
       return;
     }
@@ -1991,22 +2052,50 @@ function canActorDo(action) {
 // --- whoami -----------------------------------------------------------------
 // Fetch the actor's verified tier from the edge (GET /whoami). Identity comes
 // from the bearer token server-side; the UI never trusts a client-set tier.
+// Returns a status so callers can distinguish a valid session from an expired
+// token or a transient blip — the boot/refresh path needs this to decide between
+// "render the app" and "prompt re-auth":
+//   'ok'           — tier resolved from the edge; tab visibility applied
+//   'unauthorized' — token definitively rejected (HTTP 401): caller should re-auth
+//   'error'        — transient (network / 5xx / malformed): caller keeps session, retries
+// Only a definitive 401 forces re-auth; a 5xx never nukes a valid session.
 async function refreshWhoami() {
+  let res;
   try {
-    const res  = await apiFetch("GET", "/whoami");
-    const data = unwrap(await res.json());
-    if (data.success && data.access_level) {
-      accessLevel = data.access_level;
-      localStorage.setItem("ops_access_level", accessLevel);
-      if (data.email) { userEmail = data.email; localStorage.setItem("ops_email", userEmail); }
-    }
+    res = await apiFetch("GET", "/whoami");
   } catch (e) {
-    // Non-fatal: with no known tier, canActorDo() returns false for everything,
-    // so gated controls simply stay hidden (fail closed).
+    failClosedTier();                      // fail-closed: tier UNconfirmed -> hide gated controls
+    return "error";
   }
+  if (res.status === 401) return "unauthorized";
+  if (!res.ok) { failClosedTier(); return "error"; }
+  let data;
+  try { data = unwrap(await res.json()); }
+  catch (e) { failClosedTier(); return "error"; }
+  if (data.success && data.access_level) {
+    accessLevel = data.access_level;
+    localStorage.setItem("ops_access_level", accessLevel);
+    if (data.email) { userEmail = data.email; localStorage.setItem("ops_email", userEmail); }
+    applyTierVisibility();
+    document.getElementById("access-info").textContent =
+      userEmail ? `${userEmail} · ${accessLevel}` : "";
+    return "ok";
+  }
+  // 2xx but no tier — treat as transient/malformed, not a reason to sign out.
+  failClosedTier();
+  return "error";
+}
+
+// Whenever /whoami does NOT positively confirm a tier (network, 5xx, malformed
+// body), the cached tier must NOT drive tab visibility — otherwise a refresh
+// during a server blip renders steward tabs from stale localStorage for a session
+// the server never confirmed (the tabs are still edge-gated, so it's a UI fail-
+// open, not data exposure — but the contract is fail-CLOSED). Drop the cached tier
+// so canActorDo() returns false for everything and gated tabs hide.
+function failClosedTier() {
+  accessLevel = null;
+  localStorage.removeItem("ops_access_level");
   applyTierVisibility();
-  document.getElementById("access-info").textContent =
-    userEmail ? `${userEmail} · ${accessLevel || "unknown tier"}` : (accessLevel || "");
 }
 
 function applyTierVisibility() {
@@ -2493,7 +2582,12 @@ async function loadMembers() {
     host.innerHTML = rows.map(m => {
       const status = m.retired ? "retired" : (m.activated ? "active" : "invited");
       const color  = m.retired ? "var(--text-dim)" : (m.activated ? "#2e9d5b" : "#c98a1a");
-      const action = m.retired ? "" :
+      // Retired members get a Remove action (drop from the roster lists; history
+      // preserved) — never offered on active/invited members (they must be retired
+      // first). Active/invited members get Set pw + Retire. The Remove write routes
+      // through the shared confirmation challenge (mccConfirmedWrite).
+      const action = m.retired ?
+        `<button class="team-remove-member btn" data-email="${escHtml(m.email)}" style="padding:4px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-dim);cursor:pointer;">Remove</button>` :
         `<button class="team-setpw-member btn" data-email="${escHtml(m.email)}" style="padding:4px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;">Set pw</button>
          <button class="team-retire-member btn" data-email="${escHtml(m.email)}" style="padding:4px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;">Retire</button>`;
       return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
@@ -2557,6 +2651,19 @@ async function retireMember(email) {
   } catch (e) { teamAlert("Retire failed: " + e.message, "error"); }
 }
 
+// Remove a RETIRED member from the roster lists. Offered ONLY on retired rows.
+// Routes through the shared confirmation challenge (type-to-confirm), fingerprint-
+// bound to the email. The server hard-deletes the row when unreferenced, else
+// soft-flags it (history preserved); it re-checks every guard in-SQL. Refresh the
+// member AND approver lists on success (a removed retired-approver leaves both).
+async function removeMember(email) {
+  const wj = await mccConfirmedWrite("member_remove", email, `/members/${encodeURIComponent(email)}/remove`, {});
+  if (!wj) return;                                     // cancelled or rejected (banner already shown)
+  teamAlert(`Removed ${email} from the roster lists. History preserved.`, "success");
+  loadMembers();
+  loadApprovers();
+}
+
 async function addApprover() {
   const email = (document.getElementById("approver-email").value || "").trim();
   const isCeo = document.getElementById("approver-ceo").checked;
@@ -2606,6 +2713,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (ml) ml.addEventListener("click", (e) => {
     const sb = e.target.closest(".team-setpw-member");
     if (sb) { setMemberPassword(sb.dataset.email); return; }
+    const rm = e.target.closest(".team-remove-member");
+    if (rm) { removeMember(rm.dataset.email); return; }
     const b = e.target.closest(".team-retire-member");
     if (b) retireMember(b.dataset.email);
   });
