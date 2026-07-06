@@ -564,6 +564,7 @@
     <div class="tab" data-tab="breakglass">Break-Glass</div>
     <div class="tab" data-tab="config" id="tab-config" style="display:none;">Config</div>
     <div class="tab" data-tab="team" id="tab-team" style="display:none;">Team</div>
+    <div class="tab" data-tab="email" id="tab-email" style="display:none;">Email</div>
     <div class="tab" data-tab="eng-notes" id="tab-eng-notes" style="display:none;">Engineering Notes</div>
   </div>
 
@@ -801,6 +802,28 @@
          note row is kept). PRIVACY (locked): technical content ONLY — never
          personal data. The edge + RPC enforce the engineer gate server-side.
     ===================================================================== -->
+    <!-- =====================================================================
+         MCC Email control. Steward-only. Choose the primary email sender
+         (the other becomes backup) — a critical change gated by the shared
+         confirmation challenge. Plus live per-provider send counters (today /
+         this month) and remaining balance, clearly labelled authoritative
+         (from the provider) vs derived (our own count vs a configured
+         allowance). The edge + RPCs enforce the steward gate + challenge
+         server-side; this UI is convenience only.
+    ===================================================================== -->
+    <div class="tab-panel" id="panel-email">
+      <h2 style="font-size:16px;font-weight:600;margin-bottom:6px;">Email delivery</h2>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px;">
+        Steward-only. Set which provider sends first; the other is the automatic
+        backup. Changing the primary requires a confirmation challenge so a stray
+        tap can never flip the live sender. Counters and balances update on load.
+      </p>
+      <div id="email-alert"></div>
+      <div id="email-body">
+        <div class="loading-state"><div class="spinner"></div> Loading email status…</div>
+      </div>
+    </div>
+
     <div class="tab-panel" id="panel-eng-notes">
       <h2 style="font-size:16px;font-weight:600;margin-bottom:6px;">Engineering notes</h2>
       <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px;">
@@ -1015,6 +1038,7 @@ document.querySelectorAll(".tab[data-tab]").forEach(tab => {
     }
     if (tab.dataset.tab === "config") loadConfig();
     if (tab.dataset.tab === "team") loadTeam();
+    if (tab.dataset.tab === "email") loadEmail();
     if (tab.dataset.tab === "eng-notes") loadEngNotes();
   });
 });
@@ -2000,6 +2024,10 @@ function applyTierVisibility() {
   const teamTab = document.getElementById("tab-team");
   if (teamTab) teamTab.style.display = isSteward ? "block" : "none";
 
+  // MCC Email control: the Email tab is steward-only (same gate as Config/Team).
+  const emailTab = document.getElementById("tab-email");
+  if (emailTab) emailTab.style.display = isSteward ? "block" : "none";
+
   // Stage 7: the Engineering Notes tab is engineer-only (parallel tier).
   const engNotesTab = document.getElementById("tab-eng-notes");
   const isEngineer  = canActorDo("canEngNotes");
@@ -2257,6 +2285,132 @@ const CONFIG_FIELDS = [
   { key: "user_commitment_window_hours", label: "User commitment window (hours)" },
   { key: "stale_sweep_window_days",      label: "Stale sweep window (days)" },
 ];
+// =============================================================================
+// MCC Email control — the SHARED confirmation-challenge write helper + the Email
+// tab renderer.
+//
+// mccConfirmedWrite() is the one component every gated MCC write should route
+// through (built to match the Phase-34.2 mccConfirmedWrite shape so they collapse
+// to one at cutover):
+//   1. POST /challenge {action_key, fingerprint} → {challenge_id, challenge_phrase}
+//   2. prompt the operator to type the phrase back (a deliberate act)
+//   3. call the write with challenge_id + challenge_response
+// The SERVER still enforces the gate (the RPC rejects a write without a fresh
+// valid challenge) — this helper is only the UI half of that one mechanism.
+// =============================================================================
+async function mccConfirmedWrite(actionKey, fingerprint, writePath, writeBody) {
+  try {
+    const cres = await apiFetch("POST", "/challenge", { action_key: actionKey, fingerprint: fingerprint });
+    const cj = unwrap(await cres.json());
+    if (!cj.success || !cj.challenge_id) { pushBanner(cj.message || "Could not start confirmation.", "error"); return null; }
+    const typed = window.prompt(`Confirm this change — type the phrase to proceed:\n\n    ${cj.challenge_phrase}\n`);
+    if (typed == null) return null;                          // operator cancelled
+    const wres = await apiFetch("POST", writePath, { ...writeBody, challenge_id: cj.challenge_id, challenge_response: typed.trim() });
+    const wj = unwrap(await wres.json());
+    if (!wj.success) { pushBanner(wj.message || (wj.error_code ? `Rejected: ${wj.error_code}` : "Change rejected."), "error"); return null; }
+    pushBanner("Change confirmed and applied.", "success");
+    return wj;
+  } catch (e) { pushBanner("Change failed: " + e.message, "error"); return null; }
+}
+
+function emailProviderTitle(label) {
+  if (label === "resend")    return "Resend";
+  if (label === "zeptomail") return "ZeptoMail";
+  return label;
+}
+
+// Render the "remaining balance" block for one provider, honestly labelled.
+function emailBalanceHtml(b) {
+  b = b || {};
+  const tag = b.authoritative
+    ? `<span style="color:#0a7f3f;font-weight:600;">Authoritative (from provider)</span>`
+    : `<span style="color:var(--text-dim);font-weight:600;">${b.source === "derived" ? "Derived (our count vs configured allowance)" : "Not available from provider"}</span>`;
+  let body;
+  if (b.source === "derived") {
+    body = `<div style="font-size:20px;font-weight:700;">${Number(b.monthly_remaining).toLocaleString()}<span style="font-size:12px;font-weight:400;color:var(--text-dim);"> / ${Number(b.monthly_allowance).toLocaleString()} left this month</span></div>`
+         + `<div style="font-size:13px;color:var(--text-dim);margin-top:2px;">${Number(b.daily_remaining).toLocaleString()} / ${Number(b.daily_cap).toLocaleString()} left today</div>`;
+  } else if (b.authoritative) {
+    body = `<div style="font-size:20px;font-weight:700;">${Number(b.remaining ?? 0).toLocaleString()}<span style="font-size:12px;font-weight:400;color:var(--text-dim);"> remaining</span></div>`;
+  } else {
+    body = `<div style="font-size:15px;font-weight:600;">Not available from provider</div>`
+         + `<div style="font-size:12px;color:var(--text-dim);margin-top:2px;">Check the provider dashboard.</div>`;
+  }
+  return `${body}<div style="font-size:11px;margin-top:6px;">${tag}</div>`
+       + (b.note ? `<div style="font-size:11px;color:var(--text-dim);margin-top:4px;line-height:1.35;">${escHtml(b.note)}</div>` : "");
+}
+
+async function loadEmail() {
+  const host = document.getElementById("email-body");
+  if (!host) return;
+  if (!canActorDo("canEditConfig")) {
+    host.innerHTML = `<div class="alert alert-error">Steward access required for the Email control.</div>`;
+    return;
+  }
+  host.innerHTML = `<div class="loading-state"><div class="spinner"></div> Loading email status…</div>`;
+  try {
+    const res  = await apiFetch("GET", "/email/status");
+    const data = unwrap(await res.json());
+    if (!data.success) { host.innerHTML = `<div class="alert alert-error">${escHtml(data.message || data.error_code || "Failed to load.")}</div>`; return; }
+    const providers = data.providers || [];
+
+    // Primary-sender selector (segmented control). Clicking a non-primary provider
+    // routes through the confirmation challenge before the swap is applied.
+    const selector = providers.map(p => {
+      const primary = p.is_primary;
+      const style = primary
+        ? "background:var(--accent,#2d6cdf);color:#fff;border-color:var(--accent,#2d6cdf);"
+        : "background:var(--bg);color:var(--text);border-color:var(--border);cursor:pointer;";
+      return `<button class="email-primary-opt" data-provider="${escHtml(p.provider_key)}" ${primary ? "disabled" : ""}
+               style="padding:9px 18px;border:1px solid;border-radius:8px;font-size:14px;font-weight:600;${style}">
+               ${escHtml(emailProviderTitle(p.label))}${primary ? " · primary" : ""}
+             </button>`;
+    }).join(`<span style="align-self:center;color:var(--text-dim);font-size:13px;">or</span>`);
+
+    // Per-provider cards: today / this month / remaining.
+    const cards = providers.map(p => {
+      const primaryBadge = p.is_primary
+        ? `<span style="font-size:11px;background:var(--accent,#2d6cdf);color:#fff;padding:2px 8px;border-radius:10px;">PRIMARY</span>`
+        : `<span style="font-size:11px;background:var(--border);color:var(--text-dim);padding:2px 8px;border-radius:10px;">backup</span>`;
+      return `
+        <div style="flex:1 1 260px;border:1px solid var(--border);border-radius:10px;padding:16px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+            <strong style="font-size:15px;">${escHtml(emailProviderTitle(p.label))}</strong>
+            ${primaryBadge}
+          </div>
+          <div style="display:flex;gap:18px;margin-bottom:14px;">
+            <div><div style="font-size:22px;font-weight:700;">${Number(p.sent_today).toLocaleString()}</div>
+                 <div style="font-size:11px;color:var(--text-dim);">sent today (UTC)</div></div>
+            <div><div style="font-size:22px;font-weight:700;">${Number(p.sent_month).toLocaleString()}</div>
+                 <div style="font-size:11px;color:var(--text-dim);">sent this month</div></div>
+          </div>
+          <div style="border-top:1px solid var(--border);padding-top:12px;">
+            <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Remaining balance</div>
+            ${emailBalanceHtml(p.balance)}
+          </div>
+        </div>`;
+    }).join("");
+
+    host.innerHTML = `
+      <div style="margin-bottom:8px;font-size:13px;font-weight:600;">Primary sender</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;margin-bottom:8px;">${selector}</div>
+      <p style="color:var(--text-dim);font-size:12px;margin-bottom:22px;">
+        The primary sends first; on failure delivery cascades to the backup automatically.
+        Switching asks you to type a one-time confirmation phrase.
+      </p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">${cards}</div>`;
+
+    host.querySelectorAll(".email-primary-opt:not([disabled])").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const provider = btn.dataset.provider;
+        const r = await mccConfirmedWrite("email_provider_swap", provider, "/email/primary", { provider });
+        if (r) loadEmail();
+      });
+    });
+  } catch (e) {
+    host.innerHTML = `<div class="alert alert-error">Failed to load email status: ${escHtml(e.message)}</div>`;
+  }
+}
+
 async function loadConfig() {
   const host = document.getElementById("config-list");
   if (!host) return;
